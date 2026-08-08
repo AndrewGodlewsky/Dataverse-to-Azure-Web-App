@@ -5,9 +5,10 @@ container image via ACR to Azure Web App for Containers, fed by Dataverse data.
 
 ## Where facts live
 
-- **Wayfinder map**: `wayfinder/map.md` — destination, standing facts, fog, scope.
-  Tickets in `wayfinder/tickets/` (local-markdown tracker; conventions at the top of
-  the map).
+- **Wayfinder map**: [GitHub issue #8](https://github.com/AndrewGodlewsky/Dataverse-to-Azure-Web-App/issues/8)
+  (label `wayfinder:map`) — destination, standing facts, fog, scope. Tickets are its
+  sub-issues; blocking uses native issue dependencies. Research assets live in
+  `wayfinder/research/`.
 - **Architecture decision records**: `plans/architecture/` — entry point
   `plans/architecture/DECISIONS.md`, template `plans/architecture/TEMPLATE.md`.
   Only ratified, architecturally significant, hard-to-reverse decisions go here

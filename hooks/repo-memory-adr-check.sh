@@ -47,8 +47,7 @@ fi
 # the build starts. Deliberately narrow: a noisy nudge is one people learn to
 # ignore, which is worse than none.
 SIGNIFICANT=$(printf '%s\n' "$CHANGED" | grep -E \
-  -e '^wayfinder/map\.md$' \
-  -e '^wayfinder/tickets/' \
+  -e '^wayfinder/research/' \
   -e '(^|/)(Dockerfile|docker-compose\.ya?ml)$' \
   -e '^\.github/workflows/' \
   || true)
