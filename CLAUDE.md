@@ -1,5 +1,8 @@
 # Dataverse → Azure Web App Dashboard
 
+**Picking up mid-project? Read [HANDOFF.md](HANDOFF.md) first** — current state,
+what's left, and build gotchas.
+
 Planning repo for an options atlas: a custom React-family dashboard shipped as a
 container image via ACR to Azure Web App for Containers, fed by Dataverse data.
 

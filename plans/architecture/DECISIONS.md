@@ -63,9 +63,40 @@ Find a decision three ways: **by domain** (the tables below), **by date** (the y
      that does not fit. Likely domains for this project: Data egress, Auth & identity,
      Hosting & deployment, Frontend. -->
 
-*No decisions recorded yet.*
+### Data access
+
+| ADR | Decision | Status | Record |
+|-----|----------|--------|--------|
+| [ADR-0001](2026/2026-08.md#adr-0001--access-dataverse-live-via-the-web-api-no-copy-store) | Live via Web API, no copy store; tripwire to Synapse Link at ≥50k aggregates or sustained 429s | Accepted | 2026-08 |
+
+### Auth & identity
+
+| ADR | Decision | Status | Record |
+|-----|----------|--------|--------|
+| [ADR-0002](2026/2026-08.md#adr-0002--stage-the-s2s-credential-client-secret-first-federated-identity-credential-as-end-state) | S2S credential staged: client secret → federated identity credential | Accepted | 2026-08 |
+| [ADR-0003](2026/2026-08.md#adr-0003--gate-viewers-with-easy-auth-and-an-assigned-entra-group) | Viewers gated by Easy Auth + assigned Entra group | Accepted | 2026-08 |
+
+### Hosting & deployment
+
+| ADR | Decision | Status | Record |
+|-----|----------|--------|--------|
+| [ADR-0004](2026/2026-08.md#adr-0004--ship-one-multi-stage-container-image-via-acr-to-web-app-for-containers) | One multi-stage image via ACR (managed-identity pull) to Web App for Containers | Accepted | 2026-08 |
+
+### Frontend
+
+| ADR | Decision | Status | Record |
+|-----|----------|--------|--------|
+| [ADR-0005](2026/2026-08.md#adr-0005--build-the-frontend-as-vite--express--apache-echarts) | Vite + Express + Apache ECharts | Accepted | 2026-08 |
+
+### Planning & records
+
+| ADR | Decision | Status | Record |
+|-----|----------|--------|--------|
+| [ADR-0006](2026/2026-08.md#adr-0006--record-architecture-decisions-as-adrs-in-plansarchitecture) | ADRs live in plans/architecture/ (append-only, hook-nudged) | Accepted | 2026-08 |
+| [ADR-0007](2026/2026-08.md#adr-0007--plan-large-efforts-as-wayfinder-maps-on-github-issues-keep-research-assets-in-repo) | Wayfinder maps on GitHub Issues; research assets in-repo | Accepted | 2026-08 |
 
 ## Years
 
 | Year | Decisions | Index |
 |------|-----------|-------|
+| 2026 | 7 | [2026/INDEX.md](2026/INDEX.md) |

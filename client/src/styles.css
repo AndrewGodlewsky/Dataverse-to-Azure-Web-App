@@ -1,0 +1,66 @@
+/* Palette roles from the dataviz reference instance; charts read these via
+   getComputedStyle so light/dark swap in exactly one place. */
+:root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --page: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --gridline: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+  --series-1: #2a78d6;      /* categorical slot 1 (blue) */
+  --series-1-strong: #104281; /* sequential 650 — selection emphasis */
+  --series-1-soft: #86b6ef;   /* sequential 250 — ordinal floor on light */
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --gridline: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --series-1: #3987e5;
+    --series-1-strong: #86b6ef; /* emphasis flips lighter on dark */
+    --series-1-soft: #184f95;   /* sequential 600 — ordinal floor on dark */
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.shell { max-width: 1200px; margin: 0 auto; padding: 24px 20px 48px; }
+.shell > header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+.shell h1 { font-size: 20px; margin: 0; }
+.mode-badge { font-size: 12px; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; }
+
+.filter-row { display: flex; align-items: center; gap: 8px; min-height: 32px; margin-bottom: 16px; color: var(--text-secondary); font-size: 13px; }
+.filter-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-1); border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; font-size: 13px; color: var(--text-primary); }
+.filter-chip button { border: none; background: none; cursor: pointer; color: var(--text-muted); font-size: 14px; padding: 0; line-height: 1; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+.tile .label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+.tile .value { font-size: 26px; font-weight: 600; }
+
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 12px 12px 4px; }
+.card.wide { grid-column: 1 / -1; }
+.card h2 { font-size: 14px; font-weight: 600; margin: 4px 4px 0; }
+.card .sub { font-size: 12px; color: var(--text-muted); margin: 2px 4px 6px; }
+@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+
+details.table-view { margin: 4px; font-size: 12px; color: var(--text-secondary); }
+details.table-view table { border-collapse: collapse; margin: 6px 0 10px; }
+details.table-view th, details.table-view td { text-align: left; padding: 2px 12px 2px 0; font-variant-numeric: tabular-nums; }
+details.table-view th { color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--gridline); }

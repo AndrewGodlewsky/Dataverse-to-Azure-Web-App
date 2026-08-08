@@ -1,0 +1,11 @@
+node_modules
+client/node_modules
+client/dist
+.env
+.git
+docs
+plans
+wayfinder
+hooks
+.githooks
+*.md
