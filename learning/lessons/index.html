@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The course — Dataverse → Azure, run it yourself</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="wrap">
+
+  <p class="eyebrow">Course map</p>
+  <h1>Run it yourself</h1>
+  <p class="lede">Nine lessons from "what are the parts" to "the secret is deleted and I
+  know why it broke". The order follows the deployment path, so each one unblocks the next
+  real step rather than completing a taxonomy.</p>
+
+  <div class="meta">
+    <span>~5 hours total</span>
+    <span>Sessions of 30–45 minutes</span>
+    <span>Assumes no Azure or Dataverse background</span>
+  </div>
+
+  <h2>The lessons</h2>
+
+  <ul class="parts">
+    <li>
+      <span class="who">~35 min · no accounts needed</span>
+      <span class="name"><a href="0001-the-frame.html">01 — Five parts and one request</a></span>
+      <span class="body">The five components, the one-port rule, what a BFF is, and the
+      seven hops a click takes. Everything else attaches here.</span>
+    </li>
+    <li>
+      <span class="who">~40 min · unblocks the IT request</span>
+      <span class="name"><a href="0002-app-identity.html">02 — How the app proves it may read</a></span>
+      <span class="body">App registration, application user, security role — three objects
+      in two portals, and why the registration needs no API permissions.</span>
+    </li>
+    <li>
+      <span class="who">~30 min · unblocks the viewer group</span>
+      <span class="name"><a href="0003-viewer-identity.html">03 — How your colleagues get in</a></span>
+      <span class="body">Easy Auth's three switches, the one that defaults to your whole
+      company, and the trade you made by reading at app level.</span>
+    </li>
+    <li>
+      <span class="who">~45 min · first step that costs money</span>
+      <span class="name"><a href="0004-provisioning.html">04 — Making the Azure side exist</a></span>
+      <span class="body">Five commands, every flag explained, managed identity and RBAC,
+      and what the meter starts charging for.</span>
+    </li>
+    <li>
+      <span class="who">~35 min · needs lesson 04</span>
+      <span class="name"><a href="0005-shipping.html">05 — Getting the image there, and running</a></span>
+      <span class="body">Cloud builds with no local Docker, the pull-on-restart trap, tag
+      strategy, and reading the container log stream.</span>
+    </li>
+    <li>
+      <span class="who">~45 min · needs the credential</span>
+      <span class="name"><a href="0006-real-data.html">06 — Pointing it at real tables</a></span>
+      <span class="body">The mock-to-live switch, enough OData to read your own query, and
+      the two marked edits — plus how to find what your columns are really called.</span>
+    </li>
+    <li>
+      <span class="who">~40 min · the defensible-decision lesson</span>
+      <span class="name"><a href="0007-the-ceilings.html">07 — The limits that decide the architecture</a></span>
+      <span class="body">Three numbers, two of them already handled in your code, and the
+      tripwire that would reopen the copy branch.</span>
+    </li>
+    <li>
+      <span class="who">~40 min · mock mode, nothing can break</span>
+      <span class="name"><a href="0008-the-frontend.html">08 — Changing what the dashboard shows</a></span>
+      <span class="body">The cross-filter loop in fifteen lines, ECharts as configuration,
+      and why colour never gets hardcoded.</span>
+    </li>
+    <li>
+      <span class="who">~40 min · closes the mission</span>
+      <span class="name"><a href="0009-operating.html">09 — When it breaks, and deleting the secret</a></span>
+      <span class="body">Bisecting the trace in four questions, what each status code
+      names, and the upgrade that removes the last password.</span>
+    </li>
+  </ul>
+
+  <h2>Everything else in the workspace</h2>
+
+  <table>
+    <thead><tr><th>File</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td><a href="../reference/request-path.html">reference/request-path.html</a></td><td>The one-page card. Symptom-to-suspect table. Print it</td></tr>
+      <tr><td class="mono">MISSION.md</td><td>Why you are learning this, and what success looks like</td></tr>
+      <tr><td class="mono">RESOURCES.md</td><td>Trusted sources per topic, communities, and known gaps</td></tr>
+      <tr><td class="mono">NOTES.md</td><td>Your preferences and the teaching decisions behind this order</td></tr>
+      <tr><td class="mono">learning-records/</td><td>What you have demonstrated, which steers what comes next</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <h3>These nine were written in one sitting</h3>
+    <p>Normally each lesson is written after seeing how the last one landed, so it lands in
+    your zone of proximal development. Written upfront, they are aimed at a
+    <em>predicted</em> you. Tell your teacher when a lesson is too easy or too dense and it
+    gets rewritten — the numbering stays, the content is not fixed.</p>
+  </div>
+
+</main>
+</body>
+</html>

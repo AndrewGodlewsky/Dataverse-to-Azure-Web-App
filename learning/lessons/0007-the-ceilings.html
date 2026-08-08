@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 07 — The limits that decide the architecture</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+<main class="wrap">
+
+  <p class="eyebrow">Lesson 07 · The ceilings</p>
+  <h1>The limits that decide the architecture</h1>
+  <p class="lede">Three numbers explain the entire options atlas. Two of them are why a
+  copy of your data might ever be worth building, and one of your mission's success
+  criteria is being able to say so with your own row counts.</p>
+
+  <div class="meta">
+    <span>~40 minutes</span>
+    <span>Pairs with figures 3 and 10</span>
+    <span>The lesson that lets you defend ADR-0001</span>
+    <span data-score></span>
+  </div>
+
+  <div class="quiz" data-why="A lookup — underscore prefix, _value suffix. Worth having reflexive by now, because it is the single most common cause of a 400 from the Web API.">
+    <p class="q">Recall from lesson 06: what is <code>_cr_account_value</code>?</p>
+    <ul class="opts">
+      <li><button>A computed column</button></li>
+      <li><button>A choice column</button></li>
+      <li><button data-correct>A lookup column</button></li>
+      <li><button>A secured column</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <h2>The three numbers</h2>
+
+  <table>
+    <thead><tr><th>Limit</th><th>Value</th><th>What happens at the edge</th></tr></thead>
+    <tbody>
+      <tr><td>Page size</td><td class="mono">5,000 rows</td><td>You get a link to the next page. An inconvenience</td></tr>
+      <tr><td>Request budget</td><td class="mono">6,000 / 5 min</td><td>429 with <code>Retry-After</code>. A slowdown, shared by everyone</td></tr>
+      <tr><td>Aggregate scope</td><td class="mono">50,000 rows</td><td><strong>A hard error.</strong> No paging around it</td></tr>
+    </tbody>
+  </table>
+
+  <p>The budget has two companions worth knowing: 20 minutes of total execution time and
+  52 concurrent requests, in the same five-minute window.
+  (<a href="https://learn.microsoft.com/power-apps/developer/data-platform/api-limits">Service
+  protection API limits</a>) All three are counted <em>per user</em> — and your app is one
+  user, so every viewer draws from one pot. That single fact is what lesson 03's
+  app-level-versus-per-viewer trade was really about.</p>
+
+  <h2>Two of the three are already handled — in your code</h2>
+
+  <h3>Paging</h3>
+  <p>In <code>server/dataverse.js</code>:</p>
+  <pre><code>Prefer: `odata.maxpagesize=${maxPageSize}`
+...
+url = body["@odata.nextLink"] ?? null;   // loop until there is no next page</code></pre>
+  <p>Ask for a page size, then follow the link Dataverse hands back until it stops handing
+  one back.
+  (<a href="https://learn.microsoft.com/power-apps/developer/data-platform/webapi/query/page-results">Page
+  results</a>) Ordinary, and the reason lesson 01 insisted this loop belongs on a server.</p>
+
+  <h3>Throttling</h3>
+  <pre><code>if (res.status === 429 &amp;&amp; attempt &lt; 3) {
+  const waitSec = Number(res.headers.get("Retry-After")) || 2 ** attempt;
+  await new Promise((r) =&gt; setTimeout(r, waitSec * 1000));
+  return fetchWithRetry(url, token, maxPageSize, fetchImpl, attempt + 1);
+}</code></pre>
+  <p>Dataverse tells you how long to wait; the code waits that long, falling back to
+  exponential backoff if the header is missing, and gives up after three tries. Notice
+  where this lives: in <em>one</em> function that every query goes through. Throttle
+  handling scattered across callers is how you get an app that half-works under load.</p>
+
+  <h2>The third one is not handled, on purpose</h2>
+
+  <p>There is no code for the aggregate cap, because this app never asks Dataverse to
+  aggregate. Look at what <code>provider.js</code> actually does: it fetches order
+  <em>rows</em> and sums them in JavaScript.</p>
+
+  <pre><code>export function summarize(orders, category) {
+  const rows = category ? orders.filter((o) =&gt; o.category === category) : orders;
+  return { totalRevenue: Math.round(rows.reduce((s, o) =&gt; s + o.total, 0)), ... };
+}</code></pre>
+
+  <p>That is a deliberate trade, and you should be able to state both halves:</p>
+
+  <table>
+    <thead><tr><th>Aggregating in the BFF (chosen)</th><th>Aggregating in Dataverse</th></tr></thead>
+    <tbody>
+      <tr><td>Never near the 50,000-row cap</td><td>Hits the cap the moment a groupby scans 50k</td></tr>
+      <tr><td>Cross-filtering is free — filter in memory</td><td>Every filter is a new upstream query</td></tr>
+      <tr><td>Pulls every row, every cache expiry</td><td>Pulls only the answer</td></tr>
+      <tr><td>Fine at thousands of rows</td><td>Fine at any row count it can answer</td></tr>
+    </tbody>
+  </table>
+
+  <p>So the design is right for a table of thousands and wrong for a table of millions.
+  Which yours is, nobody has ever checked.</p>
+
+  <div class="callout limit">
+    <h3>The tripwire — this is the thing to remember</h3>
+    <p>ADR-0001 chose live-only <em>with a condition attached</em>: if an aggregate needs
+    ≥50,000 rows, or 429s become sustained rather than occasional, the copy branch opens —
+    additively, alongside the live leg, with a superseding ADR. That is not a failure of
+    the design; it is the design's own stated exit.</p>
+    <p>You are the person who will notice it firing. Nobody else is watching.</p>
+  </div>
+
+  <h2>How to know where you stand</h2>
+
+  <ol>
+    <li><strong>Count the rows.</strong> In the maker portal, or with
+    <code>?$count=true&amp;$top=1</code> on your orders entity set. Under ~50,000 total,
+    the current design is comfortable. Approaching it, start planning.</li>
+    <li><strong>Watch for 429s.</strong> They surface as slow loads, not errors, because
+    the retry hides them. Add a <code>console.warn</code> in the retry branch and you will
+    see them in <code>az webapp log tail</code>.</li>
+    <li><strong>Count the fan-out.</strong> Five charts on load, refetching on every
+    filter click — but the TTL cache collapses those to one upstream call per key per
+    minute. Raise <code>CACHE_TTL_SECONDS</code> before you do anything more drastic.</li>
+  </ol>
+
+  <p>The cache is the cheapest lever you own. <code>server/cache.js</code> stores the
+  <em>promise</em>, not just the value, so ten simultaneous viewers on a cold cache share
+  one upstream request rather than starting ten.</p>
+
+  <h2>Retrieval practice</h2>
+
+  <div class="quiz" data-why="A hard error. Paging solves the 5,000-row page size; nothing pages around an aggregate that scans too many rows.">
+    <p class="q">An aggregate scanning 60,000 rows returns what?</p>
+    <ul class="opts">
+      <li><button>The first fifty thousand</button></li>
+      <li><button data-correct>A hard error response</button></li>
+      <li><button>A paged partial result</button></li>
+      <li><button>A throttled retry header</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="One, shared. The limits are per user and the app is a single application user — which is exactly what per-viewer OBO would have changed.">
+    <p class="q">Fifty viewers open the dashboard. How many request budgets?</p>
+    <ul class="opts">
+      <li><button>Fifty separate budgets</button></li>
+      <li><button data-correct>One shared budget</button></li>
+      <li><button>One per browser session</button></li>
+      <li><button>Two, read and write</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="It aggregates in the BFF instead — fetching rows and summing them in JavaScript, which stays far from the cap but pulls every row.">
+    <p class="q">Why is there no aggregate-cap handling in the code?</p>
+    <ul class="opts">
+      <li><button>The cache prevents it</button></li>
+      <li><button>Retries cover that case</button></li>
+      <li><button data-correct>It never aggregates upstream</button></li>
+      <li><button>Paging avoids the limit</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="Retry-After. Dataverse tells you how long to wait, and honouring it is strictly better than guessing — the code only falls back to backoff if the header is absent.">
+    <p class="q">Which response header does the retry logic read?</p>
+    <ul class="opts">
+      <li><button data-correct>The Retry-After header</button></li>
+      <li><button>The Cache-Control header</button></li>
+      <li><button>The OData-Version header</button></li>
+      <li><button>The WWW-Authenticate header</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="order" data-why="Escalate by cost: cache first (free, one setting), then narrow the query, then reduce fan-out, and only then take on a second data store. Most teams reach for step four first.">
+    <p class="q">Loads are slow and 429s are appearing. Click your responses in order of cost.</p>
+    <ul class="opts">
+      <li><button data-pos="4">Open the copy branch with a superseding ADR</button></li>
+      <li><button data-pos="1">Raise the cache TTL</button></li>
+      <li><button data-pos="3">Reduce how many charts refetch per interaction</button></li>
+      <li><button data-pos="2">Narrow <code>$select</code> and filter server-side</button></li>
+    </ul>
+    <p class="progress"></p>
+    <p class="why"></p>
+  </div>
+
+  <p class="score" data-score></p>
+
+  <div class="task">
+    <h3>Do this now</h3>
+    <ol>
+      <li>Get the real row count of your orders table. Write it down.</li>
+      <li>Answer, in one sentence with that number in it: <em>"we read live rather than
+      copying because…"</em>. That sentence is a success criterion of your mission.</li>
+      <li>Now answer the harder one: <em>"and we would revisit that if…"</em> — the
+      tripwire, in your own words, with your own numbers.</li>
+      <li>Add a <code>console.warn</code> in the 429 branch of
+      <code>server/dataverse.js</code>. One line, and it turns an invisible condition into
+      a visible one.</li>
+    </ol>
+  </div>
+
+  <div class="source">
+    <h3>Read this</h3>
+    <p><a href="https://learn.microsoft.com/power-apps/developer/data-platform/api-limits">Service
+    protection API limits</a> — read it once properly. It is short, it is the authority for
+    two of the three numbers, and it is the page to cite when someone proposes polling the
+    dashboard every ten seconds.</p>
+  </div>
+
+  <div class="ask">
+    <h3>Ask me</h3>
+    <p>Bring me your row count and I will tell you honestly whether the tripwire is near.
+    If it is, the next conversation is a new wayfinder map, not a code change — and that is
+    a good outcome, not a setback.</p>
+  </div>
+
+  <nav class="nav">
+    <a href="0006-real-data.html">← Lesson 06</a>
+    <a href="../reference/request-path.html">Reference card</a>
+    <a href="0008-the-frontend.html">Lesson 08 — changing what it shows →</a>
+  </nav>
+
+</main>
+</body>
+</html>

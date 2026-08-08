@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 06 — Pointing it at real tables</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+<main class="wrap">
+
+  <p class="eyebrow">Lesson 06 · Real data</p>
+  <h1>Pointing it at real tables</h1>
+  <p class="lede">This is the moment the design meets reality. Four values switch the app
+  to live, and then two marked edits decide whether it returns your data or an error —
+  and the hard part is not the code, it is finding what your columns are really called.</p>
+
+  <div class="meta">
+    <span>~45 minutes</span>
+    <span>Needs the four credential values</span>
+    <span>Runs entirely on localhost</span>
+    <span data-score></span>
+  </div>
+
+  <div class="quiz" data-why="Nothing. App Service pulls on start — a running app keeps the image it already has. The restart is the second of the two deploy commands.">
+    <p class="q">Recall from lesson 05: a new image is pushed. What happens to the running site?</p>
+    <ul class="opts">
+      <li><button>It restarts and pulls</button></li>
+      <li><button data-correct>Nothing happens at all</button></li>
+      <li><button>It pulls within minutes</button></li>
+      <li><button>It fails until restarted</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <h2>The switch is one line</h2>
+
+  <p>At the bottom of <code>server/provider.js</code>:</p>
+
+  <pre><code>export const provider = dv.isConfigured() ? live : mock;</code></pre>
+
+  <p>And <code>isConfigured()</code> is just "are all four environment variables present?"
+  So: no <code>.env</code>, mock data. A <code>.env</code> with all four values, live
+  Dataverse. Nothing else in the app knows which happened — the routes call
+  <code>provider.summary()</code> either way.</p>
+
+  <p>Do this locally first. Copy <code>.env.example</code> to <code>.env</code>, fill the
+  four values from lesson 02, run <code>npm run dev</code>. The header badge flips from
+  mock to live, and you will almost certainly get a 502 from <code>/api</code> — because
+  the table names in the code are invented. That is the expected next problem.</p>
+
+  <h2>Reading OData well enough</h2>
+
+  <p>The Dataverse Web API speaks OData v4.
+  (<a href="https://learn.microsoft.com/power-apps/developer/data-platform/webapi/overview">Web
+  API overview</a>) You only need five facts to read the query in your own code:</p>
+
+  <table>
+    <thead><tr><th>Thing</th><th>Looks like</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Entity set</td><td class="mono">cr_orders</td><td>The <em>plural</em> logical name — this is the URL segment</td></tr>
+      <tr><td>Column</td><td class="mono">cr_total</td><td>Logical name, lower-case, publisher-prefixed</td></tr>
+      <tr><td>Lookup column</td><td class="mono">_cr_account_value</td><td>Underscore prefix and <code>_value</code> suffix. Trips everyone once</td></tr>
+      <tr><td>Choice column</td><td class="mono">statuscode</td><td>Comes back as a <strong>number</strong>, not a label</td></tr>
+      <tr><td>Projection</td><td class="mono">?$select=a,b,c</td><td>Always select — never fetch columns you will not use</td></tr>
+    </tbody>
+  </table>
+
+  <p>Now the query in <code>provider.js</code> reads plainly:</p>
+
+  <pre><code>"cr_orders?$select=cr_category,cr_orderdate,cr_total,_cr_account_value,statuscode"</code></pre>
+
+  <p><em>From the orders table, give me five columns.</em> That is all it is.</p>
+
+  <h2>Finding what yours are really called</h2>
+
+  <p>The display name in the UI is not the logical name in the API. "Order Total" might be
+  <code>cr_total</code>, <code>new_ordertotal</code> or something a consultant chose in
+  2019. Two reliable ways to find out:</p>
+
+  <ol>
+    <li><strong>The maker portal.</strong> <code>make.powerapps.com</code> → your
+    environment → Tables → your table → Columns. The <em>Name</em> column is the logical
+    name. The table's own plural name is on its properties.</li>
+    <li><strong>Ask the API.</strong> With the app running live, hit
+    <code>&lt;your-url&gt;/api/data/v9.2/$metadata</code> in a browser signed in to
+    Dataverse — the entity sets and every property are listed exactly as the API will
+    accept them.</li>
+  </ol>
+
+  <aside class="side">Write the names down in a scratch file as you find them. You will
+  need the same list for the security role in lesson 02's item C — IT cannot grant Read on
+  tables you have not named.</aside>
+
+  <h2>The two edits</h2>
+
+  <p>Search <code>server/provider.js</code> for <code>&lt;EDIT&gt;</code>. There are four
+  markers in two places.</p>
+
+  <h3>Edit one — the orders query and its mapping</h3>
+
+  <pre><code>const rows = await dv.query(
+  "cr_orders?$select=cr_category,cr_orderdate,cr_total,_cr_account_value,statuscode"
+);
+return rows.map((r) =&gt; ({
+  category:  r.cr_category ?? "Uncategorized",
+  month:     (r.cr_orderdate ?? "").slice(0, 7),
+  total:     r.cr_total ?? 0,
+  accountId: r._cr_account_value,
+  open:      r.statuscode === 1,
+}));</code></pre>
+
+  <p>Replace the table and column names on both sides. The
+  <strong>left-hand names must not change</strong> — <code>category</code>,
+  <code>month</code>, <code>total</code>, <code>accountId</code>, <code>open</code> are the
+  shape the rest of the app agrees on. The mock provider produces the same five keys, which
+  is precisely why the charts do not care which one answered.</p>
+
+  <div class="callout limit">
+    <h3>Two traps in five lines</h3>
+    <p><code>.slice(0, 7)</code> takes <code>"2026-08"</code> from an ISO date. If your date
+    column is a Date Only column it still arrives as a string — fine. If it is null, the
+    empty string produces an empty month bucket rather than crashing, which is why the
+    <code>??</code> is there.</p>
+    <p><code>statuscode === 1</code> is a guess. Choice values are per-table and per
+    environment; "Active" is often 1, but yours might be 100000000. Check in the maker
+    portal before trusting the "open orders" number — it will be wrong silently, not
+    loudly.</p>
+  </div>
+
+  <h3>Edit two — the org tree</h3>
+
+  <p>The second query fetches org units and builds a tree from a parent lookup. Same job:
+  replace <code>cr_orgunits</code>, <code>cr_name</code>, <code>cr_orgunitid</code> and
+  <code>_cr_parent_value</code> with yours. If you have no hierarchy table, the code
+  already degrades to a "No org data" node — delete the chart instead of inventing one.</p>
+
+  <h2>What "live" costs you that mock did not</h2>
+
+  <p>Every live call now spends from a shared budget and can be throttled, and the whole
+  orders table is fetched to build the aggregates. That is deliberate, and it is the entire
+  subject of lesson 07 — including how to tell whether your real row counts make it a
+  reasonable choice or a broken one.</p>
+
+  <h2>Retrieval practice</h2>
+
+  <div class="quiz" data-why="All four environment variables being present. isConfigured() checks exactly that, and the provider switches with no other change.">
+    <p class="q">What makes the app run live rather than mock?</p>
+    <ul class="opts">
+      <li><button>A build-time flag</button></li>
+      <li><button data-correct>Four environment variables</button></li>
+      <li><button>An Azure app setting</button></li>
+      <li><button>A command-line switch</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="A lookup — the underscore prefix and _value suffix is how the Web API exposes the foreign key. Query it without them and you get an error.">
+    <p class="q">What kind of column is <code>_cr_account_value</code>?</p>
+    <ul class="opts">
+      <li><button>A choice column</button></li>
+      <li><button data-correct>A lookup column</button></li>
+      <li><button>A computed column</button></li>
+      <li><button>A secured column</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="The five output keys. They are the contract the mock provider also satisfies, which is why the frontend never learns which source answered.">
+    <p class="q">Which part of the mapping must you <em>not</em> rename?</p>
+    <ul class="opts">
+      <li><button>The Dataverse column names</button></li>
+      <li><button data-correct>The five output keys</button></li>
+      <li><button>The entity set name</button></li>
+      <li><button>The selected column list</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="Silently wrong numbers. A wrong choice value is still a valid comparison, so 'open orders' just reads zero or nonsense — no error anywhere.">
+    <p class="q">If your "open" choice value is not 1, what happens?</p>
+    <ul class="opts">
+      <li><button>The query returns 400</button></li>
+      <li><button>The chart fails loudly</button></li>
+      <li><button data-correct>The count reads wrong</button></li>
+      <li><button>The provider falls back</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <p class="score" data-score></p>
+
+  <div class="task">
+    <h3>Do this now</h3>
+    <ol>
+      <li>In the maker portal, write down the logical names for your order-like table: the
+      entity set, the category, date, amount, account lookup and status columns.</li>
+      <li>Check what your "open" status value actually is. Write the number down.</li>
+      <li>Copy <code>.env.example</code> to <code>.env</code>, fill the four values, and
+      run <code>npm run dev</code>. Confirm the badge says live before touching anything
+      else — that proves lesson 02's three objects are all in place.</li>
+      <li>Make edit one. Refresh. When a chart draws real numbers, you have completed the
+      entire left half of figure 1 on your own.</li>
+      <li>Run <code>npm test</code>. It exercises the mock path, so it should still pass —
+      if it does not, your edit broke the shared shape.</li>
+    </ol>
+  </div>
+
+  <div class="source">
+    <h3>Read this</h3>
+    <p><a href="https://learn.microsoft.com/power-apps/developer/data-platform/webapi/query/overview">Query
+    data using the Web API</a> — the query options section. Twenty minutes here makes
+    <code>$select</code>, <code>$filter</code> and <code>$expand</code> permanent, and those
+    three cover almost everything this dashboard will ever need.</p>
+  </div>
+
+  <div class="ask">
+    <h3>Ask me</h3>
+    <p>Send me your table and column names and I will write the exact query with you — but
+    do the lookup yourself first; the finding is the skill, the typing is not. If
+    <code>/api</code> returns 502, paste the terminal error: it is nearly always one of
+    three things and the message distinguishes them.</p>
+  </div>
+
+  <nav class="nav">
+    <a href="0005-shipping.html">← Lesson 05</a>
+    <a href="../reference/request-path.html">Reference card</a>
+    <a href="0007-the-ceilings.html">Lesson 07 — the two limits that decide everything →</a>
+  </nav>
+
+</main>
+</body>
+</html>

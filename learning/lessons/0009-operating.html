@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 09 — When it breaks, and deleting the secret</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+<main class="wrap">
+
+  <p class="eyebrow">Lesson 09 · Operating it</p>
+  <h1>When it breaks, and deleting the secret</h1>
+  <p class="lede">The last lesson is the one you will reuse most: a method for finding the
+  broken layer in under five minutes, and the credential upgrade that removes the only
+  password in the system.</p>
+
+  <div class="meta">
+    <span>~40 minutes</span>
+    <span>Closes the mission</span>
+    <span>Pairs with figure 5 and the reference card</span>
+    <span data-score></span>
+  </div>
+
+  <div class="quiz" data-why="From CSS custom properties, read at render. Hardcoding a hex is how a chart ends up unreadable in the theme you do not personally use.">
+    <p class="q">Recall from lesson 08: where do chart colours come from?</p>
+    <ul class="opts">
+      <li><button>The ECharts default theme</button></li>
+      <li><button data-correct>CSS custom properties</button></li>
+      <li><button>Hardcoded chart options</button></li>
+      <li><button>A server-side palette</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <h2>Diagnose by bisecting the trace</h2>
+
+  <p>You have known the seven hops since lesson 01. Debugging is just asking which hop is
+  the last one that works. Four questions, in order, and each one eliminates half the
+  system:</p>
+
+  <ol class="trace">
+    <li><span class="hop">Does the container start?</span>
+      <span class="detail"><code>az webapp log tail</code>, then restart. If you never see
+      <code>dashboard up on :8080</code>, stop here — nothing downstream matters. Pull
+      failure or crash on boot.</span></li>
+    <li><span class="hop">Does the site respond at all?</span>
+      <span class="detail">Open it in a private window. Challenged to sign in → the gate
+      works. Blank page with a healthy container → port. No challenge at all → lesson 03's
+      switches.</span></li>
+    <li><span class="hop">Does <code>/api/meta</code> answer?</span>
+      <span class="detail">The cheapest possible probe — it returns the mode and touches
+      no credential. Answers "live"? Your env vars are present. Answers "mock" in
+      production? An app setting is missing.</span></li>
+    <li><span class="hop">Do the data routes answer?</span>
+      <span class="detail">A 502 here means the upstream query failed: token, role, or
+      table name. The container log has the real error; the browser only ever sees
+      <code>upstream query failed</code>.</span></li>
+  </ol>
+
+  <div class="callout">
+    <h3>Why <code>/api/meta</code> is the probe worth remembering</h3>
+    <p>It splits the system exactly in half. Everything before it is Azure — image, port,
+    gate, settings. Everything after it is Dataverse — token, role, columns. One request
+    tells you which half to think about, and it never fails for credential reasons.</p>
+  </div>
+
+  <p>The <a href="../reference/request-path.html">reference card</a> has the full
+  symptom-to-suspect table. Print it. The point of a printed card is that you reach for it
+  when the thing you would normally search on is the thing that is down.</p>
+
+  <h2>The error you will actually hit first</h2>
+
+  <p>Charts empty, <code>/api</code> 502, log shows a Dataverse error. In order of
+  likelihood:</p>
+
+  <table>
+    <thead><tr><th>Log says</th><th>Cause</th><th>Fix lives in</th></tr></thead>
+    <tbody>
+      <tr><td><code>Dataverse 401</code></td><td>Token fine, but no application user for this app</td><td>Lesson 02, object 2</td></tr>
+      <tr><td><code>Dataverse 403</code></td><td>Application user exists, role missing or too narrow</td><td>Lesson 02, object 3</td></tr>
+      <tr><td><code>Dataverse 404</code></td><td>Entity set name wrong</td><td>Lesson 06, edit one</td></tr>
+      <tr><td><code>Dataverse 400</code></td><td>A column name wrong — often a lookup missing its underscore</td><td>Lesson 06</td></tr>
+      <tr><td>MSAL <code>AADSTS7000215</code></td><td>Wrong or expired client secret</td><td>Lesson 02, credential</td></tr>
+      <tr><td>Numbers present but wrong</td><td>Choice value guess, or masked secured column</td><td>Lesson 06 / lesson 02</td></tr>
+    </tbody>
+  </table>
+
+  <p>Notice the pattern: <strong>the status code names the object.</strong> 401 is identity,
+  403 is permission, 404 is the table, 400 is the column. Four numbers, four of the things
+  you built.</p>
+
+  <h2>Deleting the secret</h2>
+
+  <p>Right now there is exactly one password in this system: <code>CLIENT_SECRET</code>,
+  sitting in an app setting, expiring in a year or two. ADR-0002 always intended it to be
+  temporary — rung one of the ladder from lesson 02, with rung four as the destination.
+  Now that the Web App exists, you can climb.</p>
+
+  <ol>
+    <li><strong>Create a user-assigned managed identity</strong> and attach it to the Web
+    App. It must be user-assigned — only those can back a federated credential.
+    (<a href="https://learn.microsoft.com/entra/workload-id/workload-identity-federation-config-app-trust-managed-identity">Configure
+    an app to trust a managed identity</a>)</li>
+    <li><strong>Add a federated credential</strong> on the existing app registration:
+    Certificates &amp; secrets → Federated credentials → scenario <em>Managed Identity</em>
+    → select the identity from step 1. Audience
+    <code>api://AzureADTokenExchange</code>.</li>
+    <li><strong>Swap <code>getToken()</code></strong> in
+    <code>server/dataverse.js</code> — the identity asks for a token, the registration
+    accepts it as an assertion. The comment at the top of that file says this is the only
+    function that changes, and it is true.</li>
+    <li><strong>Deploy, verify, then delete the secret</strong> — in that order. Remove the
+    app setting and the secret on the registration only once live traffic is working
+    without them.</li>
+  </ol>
+
+  <div class="callout limit">
+    <h3>The gotcha that makes step 2 look broken</h3>
+    <p>Federated credential changes take a few minutes to propagate. Until they do you get
+    <code>AADSTS70021</code> — "no matching federated identity record found" — which reads
+    exactly like a misconfiguration. Wait, retry, and only then start changing things. Doing
+    it in the other order is how people end up with three half-configured credentials.</p>
+  </div>
+
+  <p>What you gain: nothing expires, nothing can leak, and the security question "where is
+  the credential stored?" gets the best possible answer — nowhere.</p>
+
+  <h2>Retrieval practice</h2>
+
+  <div class="quiz" data-why="It answers without touching a credential, so it cleanly separates the Azure half of the system from the Dataverse half.">
+    <p class="q">Why is <code>/api/meta</code> the best first probe?</p>
+    <ul class="opts">
+      <li><button>It bypasses the gate</button></li>
+      <li><button data-correct>It needs no credential</button></li>
+      <li><button>It restarts the container</button></li>
+      <li><button>It clears the cache</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="The security role — 403 means Dataverse knows who you are and has decided no. 401 would mean it does not know you at all.">
+    <p class="q">A 403 from Dataverse points at which object?</p>
+    <ul class="opts">
+      <li><button>The app registration</button></li>
+      <li><button>The application user</button></li>
+      <li><button data-correct>The security role</button></li>
+      <li><button>The entity set</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="Only user-assigned identities can back a federated credential. A system-assigned one is fine for pulling images and useless for this.">
+    <p class="q">Which identity type can a federated credential trust?</p>
+    <ul class="opts">
+      <li><button>Any managed identity</button></li>
+      <li><button data-correct>Only user-assigned ones</button></li>
+      <li><button>Only system-assigned ones</button></li>
+      <li><button>Only certificate-backed ones</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="Only after live traffic works without it. Deleting first turns a reversible step into an outage with no way back.">
+    <p class="q">When do you delete the client secret?</p>
+    <ul class="opts">
+      <li><button>Before adding the credential</button></li>
+      <li><button>Immediately after deploying</button></li>
+      <li><button data-correct>After verifying it works</button></li>
+      <li><button>During the next rotation</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="order" data-why="Identity, trust, code, verify, delete. Every step before the last is reversible; that is why the last one is last.">
+    <p class="q">Click the credential upgrade in order.</p>
+    <ul class="opts">
+      <li><button data-pos="5">Delete the secret and its app setting</button></li>
+      <li><button data-pos="2">Add a federated credential trusting it</button></li>
+      <li><button data-pos="1">Create a user-assigned managed identity</button></li>
+      <li><button data-pos="4">Deploy and confirm live data still loads</button></li>
+      <li><button data-pos="3">Swap <code>getToken()</code> to the assertion flow</button></li>
+    </ul>
+    <p class="progress"></p>
+    <p class="why"></p>
+  </div>
+
+  <p class="score" data-score></p>
+
+  <h2>The mission, as a checklist</h2>
+
+  <p>This is what you said success looks like. Tick honestly — anything unticked is a
+  request for a lesson, not a failure.</p>
+
+  <div class="task">
+    <h3>Can you, unaided?</h3>
+    <ol>
+      <li>Provision the registry, plan and Web App, explaining every flag <em>(lesson 04)</em></li>
+      <li>Trace a failing request and name the broken layer <em>(lessons 01, 09)</em></li>
+      <li>Open <code>dataverse.js</code> and <code>provider.js</code> and change them <em>(lessons 02, 06)</em></li>
+      <li>Say why live and not a copy, with your own row counts <em>(lesson 07)</em></li>
+      <li>Ship an image and know why nothing changed until restart <em>(lesson 05)</em></li>
+      <li>Hand IT the access request and field the follow-ups <em>(lessons 02, 03)</em></li>
+    </ol>
+  </div>
+
+  <div class="source">
+    <h3>Read this</h3>
+    <p><a href="https://learn.microsoft.com/entra/workload-id/workload-identity-federation">Workload
+    identity federation</a> — the concept page, before you attempt the upgrade. It explains
+    <em>why</em> an identity can stand in for a secret, which makes the four steps above
+    feel obvious rather than magic.</p>
+  </div>
+
+  <div class="ask">
+    <h3>Where to ask when I am not here</h3>
+    <p>Two places earn their keep. <a href="https://learn.microsoft.com/answers/">Microsoft
+    Q&amp;A</a> for "is this limit real, has this changed" — answered by people who work on
+    the product. <a href="https://community.powerplatform.com/">Power Platform Community</a>
+    for anything your Dataverse admin would do. Post the error text and what you already
+    ruled out; that is what gets a good answer.</p>
+    <p>And keep asking me. The lessons stop here; the system does not.</p>
+  </div>
+
+  <nav class="nav">
+    <a href="0008-the-frontend.html">← Lesson 08</a>
+    <a href="index.html">All lessons</a>
+    <a href="../reference/request-path.html">Reference card</a>
+  </nav>
+
+</main>
+</body>
+</html>

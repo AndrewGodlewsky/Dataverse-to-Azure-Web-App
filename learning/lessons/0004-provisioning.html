@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 04 — Making the Azure side exist</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+<main class="wrap">
+
+  <p class="eyebrow">Lesson 04 · Provisioning</p>
+  <h1>Making the Azure side exist</h1>
+  <p class="lede">Five commands create everything. The mission says you should be able to
+  explain every flag you typed — so this lesson is the five commands with nothing waved
+  through.</p>
+
+  <div class="meta">
+    <span>~45 minutes</span>
+    <span>Needs a subscription with Contributor</span>
+    <span>Pairs with figure 7</span>
+    <span data-score></span>
+  </div>
+
+  <div class="quiz" data-why="Everyone in the tenant. Assignment required plus a viewer group is the separate switch, and it lives in Enterprise applications.">
+    <p class="q">Recall from lesson 03: authentication required, no assignment — who gets in?</p>
+    <ul class="opts">
+      <li><button>Only assigned viewers</button></li>
+      <li><button>Only tenant administrators</button></li>
+      <li><button data-correct>Everyone in the tenant</button></li>
+      <li><button>Anyone on the internet</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <h2>Four words of vocabulary first</h2>
+
+  <ul class="parts">
+    <li><span class="name">Subscription</span><span class="body">The billing boundary. Everything you create belongs to exactly one, and its owner gets the invoice.</span></li>
+    <li><span class="name">Resource group</span><span class="body">A folder with a lifecycle. Resources in it can be listed, permissioned, and — importantly — <strong>deleted together</strong>. Put this whole project in one, and cleaning up is a single command.</span></li>
+    <li><span class="name">Region</span><span class="body">Which datacentre. Pick one near your users and keep everything in it; cross-region traffic costs money and latency.</span></li>
+    <li><span class="name">Resource</span><span class="body">Any single thing you create — a registry, a plan, a web app. Some names are unique <em>globally</em>, not just in your account, because they become public DNS.</span></li>
+  </ul>
+
+  <h2>The five commands</h2>
+
+  <p>Names first. Choose them now and reuse them consistently; two of the three must be
+  globally unique, so add something distinctive.</p>
+
+  <pre><code>$RG   = "rg-dashboard"          # yours alone, any name
+$ACR  = "acrdashboard1234"      # GLOBAL: letters+digits only, 5-50 chars
+$PLAN = "plan-dashboard"        # yours alone
+$APP  = "dashboard-yourorg"     # GLOBAL: becomes dashboard-yourorg.azurewebsites.net
+$LOC  = "eastus"</code></pre>
+
+  <h3>1 — The folder</h3>
+  <pre><code>az group create --name $RG --location $LOC</code></pre>
+  <p><code>--location</code> here sets the region for the group's own metadata; each
+  resource still takes its own location. Costs nothing — a group is free.</p>
+
+  <h3>2 — The registry</h3>
+  <pre><code>az acr create --resource-group $RG --name $ACR --sku Basic</code></pre>
+  <p><code>--sku Basic</code> is the $5/month tier: 10 GiB and two webhooks, with the same
+  authentication and RBAC as the expensive tiers. The only thing you would move up for is
+  private endpoints (Premium, +$45).
+  <strong>Billing starts now</strong>, not when you first push.</p>
+
+  <h3>3 — The plan</h3>
+  <pre><code>az appservice plan create --name $PLAN --resource-group $RG --is-linux --sku B1</code></pre>
+  <p>The <em class="term">plan</em> is the rented hardware; the web app is a site running
+  on it. This is the line that costs $12.41/month, and it charges whether or not anything
+  is deployed. <code>--is-linux</code> is not optional for a Linux container — omit it and
+  you get a Windows plan that will refuse your image.</p>
+
+  <aside class="side">One plan can host several web apps. That is the cheap way to add a
+  staging site later — not a second plan.</aside>
+
+  <h3>4 — The web app</h3>
+  <pre><code>az webapp create --resource-group $RG --plan $PLAN --name $APP `
+  --container-image-name "$ACR.azurecr.io/dashboard:latest"</code></pre>
+  <p>The image does not exist yet — that is fine. You are declaring what it will run;
+  lesson 05 puts the image there.</p>
+
+  <div class="callout limit">
+    <h3>A flag you will see in every blog post — and should not copy</h3>
+    <p>Older examples use <code>--deployment-container-image-name</code>. The CLI reference
+    now marks it <strong>Deprecated</strong>; the current flag is
+    <code>--container-image-name</code> (<code>-c</code>).
+    (<a href="https://learn.microsoft.com/cli/azure/webapp/config/container">az webapp
+    config container</a>) When you find a tutorial, check its flags against the CLI
+    reference before pasting.</p>
+  </div>
+
+  <h3>5 — Identity, and the right to pull</h3>
+  <pre><code>az webapp identity assign --resource-group $RG --name $APP
+
+az role assignment create `
+  --assignee $(az webapp identity show -g $RG -n $APP --query principalId -o tsv) `
+  --scope    $(az acr show -g $RG -n $ACR --query id -o tsv) `
+  --role     AcrPull
+
+az resource update --ids $(az webapp config show -g $RG -n $APP --query id -o tsv) `
+  --set properties.acrUseManagedIdentityCreds=true</code></pre>
+
+  <p>Three steps, three ideas:</p>
+  <ol>
+    <li><strong>Give the app an identity.</strong> A <em class="term">managed identity</em>
+    is an Entra identity that Azure creates, rotates and destroys with the resource. There
+    is no secret, because the platform vouches for the app directly.
+    (<a href="https://learn.microsoft.com/azure/app-service/overview-managed-identity">Managed
+    identities in App Service</a>)</li>
+    <li><strong>Grant it a role somewhere.</strong> Every Azure permission is this shape:
+    <em>who</em> (assignee) gets <em>what</em> (role) <em>where</em> (scope).
+    <code>AcrPull</code> on the registry — read the images, nothing else, nowhere else.</li>
+    <li><strong>Tell App Service to use it.</strong> Without
+    <code>acrUseManagedIdentityCreds</code> the platform keeps looking for a registry
+    username and password, and the pull fails with an unauthorised error that says nothing
+    about identity.</li>
+  </ol>
+
+  <h2>Settings the app will need</h2>
+
+  <p>Environment variables on Azure are called <em class="term">app settings</em>. They are
+  injected into the container at start.</p>
+
+  <pre><code>az webapp config appsettings set -g $RG -n $APP --settings `
+  WEBSITES_PORT=8080 `
+  DATAVERSE_URL="https://yourorg.crm.dynamics.com" `
+  TENANT_ID="..." CLIENT_ID="..." CLIENT_SECRET="..."</code></pre>
+
+  <p>You met all five in earlier lessons: one port rule (lesson 01) and four credential
+  values (lesson 02). Setting app settings <strong>restarts the app</strong> — which will
+  matter in lesson 05.</p>
+
+  <div class="callout">
+    <h3>Order is not arbitrary</h3>
+    <p>Plan before web app (the app needs somewhere to run). Registry before role
+    assignment (you cannot scope a role to a thing that does not exist). Identity before
+    role assignment (there is no assignee otherwise). Everything else is free order.</p>
+  </div>
+
+  <h2>What you are now paying for</h2>
+
+  <table>
+    <thead><tr><th>Resource</th><th>Meter starts</th><th>Monthly</th></tr></thead>
+    <tbody>
+      <tr><td>Resource group</td><td>—</td><td class="mono">$0</td></tr>
+      <tr><td>Registry (Basic)</td><td>On create</td><td class="mono">$5.00</td></tr>
+      <tr><td>Plan (B1 Linux)</td><td>On create</td><td class="mono">$12.41</td></tr>
+      <tr><td>Web app</td><td>—</td><td class="mono">included in plan</td></tr>
+      <tr><td>Managed identity</td><td>—</td><td class="mono">$0</td></tr>
+      <tr><td colspan="2"><strong>Total</strong></td><td class="mono"><strong>≈ $17.41</strong></td></tr>
+    </tbody>
+  </table>
+
+  <p>That is the "live-minimal" bar in figure 11. If you stop work for a month, the meter
+  keeps running — <code>az group delete --name $RG</code> removes every one of these in a
+  single command, which is the real payoff of putting them in one group.</p>
+
+  <h2>Retrieval practice</h2>
+
+  <div class="quiz" data-why="The plan. It is the rented hardware and bills from creation; the web app itself is just a site running on it.">
+    <p class="q">Which resource carries the $12.41 monthly charge?</p>
+    <ul class="opts">
+      <li><button>The container registry</button></li>
+      <li><button data-correct>The App Service plan</button></li>
+      <li><button>The web app itself</button></li>
+      <li><button>The managed identity</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="Who, what, where. Every Azure permission is an assignee plus a role plus a scope — here the app's identity, AcrPull, on the registry.">
+    <p class="q">An Azure role assignment always names which three things?</p>
+    <ul class="opts">
+      <li><button data-correct>Assignee, role, scope</button></li>
+      <li><button>Username, password, registry</button></li>
+      <li><button>Tenant, client, secret</button></li>
+      <li><button>Group, region, plan</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="Nothing at all — a managed identity has no secret by design. The platform vouches for the resource, which is why it cannot expire or leak.">
+    <p class="q">Where is a managed identity's secret stored?</p>
+    <ul class="opts">
+      <li><button>In the app settings</button></li>
+      <li><button>In an Azure vault</button></li>
+      <li><button data-correct>There is none</button></li>
+      <li><button>Inside the image</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="The registry pull. Without it App Service keeps looking for a registry username and password and fails with an unauthorised error that never mentions identity.">
+    <p class="q">Omitting acrUseManagedIdentityCreds breaks which step?</p>
+    <ul class="opts">
+      <li><button>The Dataverse token</button></li>
+      <li><button data-correct>The image pull</button></li>
+      <li><button>The viewer signin</button></li>
+      <li><button>The port forward</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="order" data-why="Each step needs the previous one to exist: somewhere to run, something to pull from, someone to do the pulling, and a right granted to them.">
+    <p class="q">Click the five creations in a valid order.</p>
+    <ul class="opts">
+      <li><button data-pos="4">Assign the web app a managed identity</button></li>
+      <li><button data-pos="1">Create the resource group</button></li>
+      <li><button data-pos="5">Grant that identity AcrPull on the registry</button></li>
+      <li><button data-pos="3">Create the web app on the plan</button></li>
+      <li><button data-pos="2">Create the registry and the plan</button></li>
+    </ul>
+    <p class="progress"></p>
+    <p class="why"></p>
+  </div>
+
+  <p class="score" data-score></p>
+
+  <div class="task">
+    <h3>Do this now — even without a subscription</h3>
+    <ol>
+      <li>Open a scratch file and write the five commands out with <em>your</em> chosen
+      names filled in. Do not run them yet if you are not ready to be billed.</li>
+      <li>Beside each flag, write one clause saying what it does. If any clause is "not
+      sure", that is your next question for me.</li>
+      <li>Run <code>az account show</code>. If it errors, you need <code>az login</code>
+      first — do that now so it is not a surprise later.</li>
+      <li>Write the teardown command underneath. Knowing you can delete everything in one
+      line is what makes it comfortable to create it.</li>
+    </ol>
+  </div>
+
+  <div class="source">
+    <h3>Read this</h3>
+    <p><a href="https://learn.microsoft.com/azure/app-service/tutorial-custom-container">Migrate
+    custom software to Azure App Service using a custom container</a> — follow the Azure
+    CLI tab. It does exactly what this lesson does, with a sample app, so you can rehearse
+    the shape on something disposable first.</p>
+  </div>
+
+  <div class="ask">
+    <h3>Ask me</h3>
+    <p>Ask before you run these if anything is unclear — provisioning is the first step
+    that costs money, and the difference between $17 and a surprise is usually one flag.
+    Also worth asking: "system-assigned or user-assigned identity?" (lesson 09 changes the
+    answer).</p>
+  </div>
+
+  <nav class="nav">
+    <a href="0003-viewer-identity.html">← Lesson 03</a>
+    <a href="../reference/request-path.html">Reference card</a>
+    <a href="0005-shipping.html">Lesson 05 — getting the image there →</a>
+  </nav>
+
+</main>
+</body>
+</html>

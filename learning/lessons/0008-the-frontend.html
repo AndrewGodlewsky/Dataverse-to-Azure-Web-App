@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 08 — Changing what the dashboard shows</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+<main class="wrap">
+
+  <p class="eyebrow">Lesson 08 · The frontend</p>
+  <h1>Changing what the dashboard shows</h1>
+  <p class="lede">Cross-filtering is the founding requirement — the reason a custom app
+  exists at all rather than a canned report. It turns out to be about fifteen lines of
+  code, and knowing which fifteen is what lets you change the dashboard safely.</p>
+
+  <div class="meta">
+    <span>~40 minutes</span>
+    <span>Runs entirely in mock mode</span>
+    <span>Pairs with figure 9</span>
+    <span data-score></span>
+  </div>
+
+  <div class="quiz" data-why="One, shared. Every viewer draws from the same service-protection budget because the app reads as a single application user.">
+    <p class="q">Recall from lesson 07: fifty viewers, how many request budgets?</p>
+    <ul class="opts">
+      <li><button>Fifty separate budgets</button></li>
+      <li><button>One per browser session</button></li>
+      <li><button data-correct>One shared budget</button></li>
+      <li><button>Two, read and write</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <h2>The whole cross-filter loop</h2>
+
+  <p>In <code>client/src/App.jsx</code>, three fragments do all of it:</p>
+
+  <pre><code>const [category, setCategory] = useState(null);
+const qs = category ? `?category=${encodeURIComponent(category)}` : "";
+
+const summary = useJson(`/api/summary${qs}`);
+const revenue = useJson(`/api/revenue-by-month${qs}`);
+
+onEvents={{
+  click: ({ dataIndex }) =&gt; {
+    const next = catTotals[dataIndex]?.category ?? null;
+    setCategory((cur) =&gt; (cur === next ? null : next));
+  },
+}}</code></pre>
+
+  <p>Read it as a chain: <strong>a click sets state → the state changes a URL → the URL
+  change refetches → the charts redraw.</strong> The toggle in the middle
+  (<code>cur === next ? null : next</code>) is what makes clicking the same bar twice clear
+  the filter, which users expect without being told.</p>
+
+  <div class="callout">
+    <h3>An accuracy correction, and it matters</h3>
+    <p>Figure 9 of the diagrams says the filter loop stays in the browser with no server
+    round trip. That describes what cross-filtering <em>can</em> be; it is not what
+    <em>this</em> app does. Here, filtering changes the URL, so the filtered views refetch
+    from the BFF — where the TTL cache usually answers immediately. The two charts that do
+    not take <code>qs</code> (category totals, org tree) genuinely never refetch.</p>
+    <p>Practical consequence: your cache TTL is part of your interaction latency, not just
+    your throttle protection.</p>
+  </div>
+
+  <h3>Why it was built this way</h3>
+
+  <p>The alternative — fetch every row once and filter in memory — would make clicks
+  instant and cost more memory and a bigger first load. Both are defensible. The current
+  choice keeps the browser thin and leans on the cache, which suits an internal dashboard
+  where the first load matters more than the fiftieth click.</p>
+
+  <h2>ECharts is configured, not composed</h2>
+
+  <p>Most React chart libraries give you JSX components. ECharts gives you one component
+  and a large plain object.</p>
+
+  <pre><code>const revenueOption = revenue &amp;&amp; {
+  grid:    { left: 48, right: 16, top: 16, bottom: 28 },
+  tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
+  xAxis:   { ... }, yAxis: { ... }, series: [ ... ],
+};</code></pre>
+
+  <p>That object is the chart. To change a chart you change the object — nothing else. It
+  is less React-ish than the alternatives and it is why ECharts was chosen: it is the only
+  library that covers every shape this project needs natively, including the tree diagram,
+  with cross-chart interaction built in.
+  (<a href="https://echarts.apache.org/handbook/en/concepts/event/">ECharts events</a>)</p>
+
+  <p>The wrapper in <code>client/src/EChart.jsx</code> is deliberately tiny — it passes
+  <code>option</code> and <code>onEvents</code> straight through, with
+  <code>notMerge</code> set so a new option replaces the old one rather than being deep
+  merged into it. That last flag prevents a whole category of "the old series is still
+  there" bugs.</p>
+
+  <h2>Colour comes from CSS, always</h2>
+
+  <pre><code>const cs = getComputedStyle(document.documentElement);
+return Object.fromEntries(ROLE_VARS.map((v) =&gt; [v, cs.getPropertyValue(`--${v}`).trim()]));</code></pre>
+
+  <p><code>usePalette()</code> reads CSS custom properties defined in
+  <code>client/src/styles.css</code> and hands them to the chart options. Light and dark
+  are defined once, in CSS, and every chart follows.</p>
+
+  <div class="callout limit">
+    <h3>The rule to keep</h3>
+    <p>Never hardcode a hex value in a chart option. The moment you do, that series stops
+    following the theme and looks broken in one of the two modes — and nobody will notice
+    until a colleague with dark mode opens it.</p>
+  </div>
+
+  <h2>Making a change safely</h2>
+
+  <p>Three changes in increasing order of risk, all in mock mode with no Azure involved:</p>
+
+  <ol>
+    <li><strong>Cosmetic</strong> — adjust a palette variable in
+    <code>styles.css</code>. Every chart updates. No JavaScript touched.</li>
+    <li><strong>Additive</strong> — add a KPI tile. It needs a number from
+    <code>summarize()</code> in <code>provider.js</code> (server) and a tile in
+    <code>App.jsx</code> (client). Note that this crosses the BFF boundary: the shape
+    contract from lesson 06 has to grow at both ends.</li>
+    <li><strong>Structural</strong> — make a second chart clickable. Add
+    <code>onEvents</code> to it and decide what its click means. This is where you can
+    genuinely confuse users: two filters that both exist need a rule for how they combine,
+    and that rule belongs in the state, not in the charts.</li>
+  </ol>
+
+  <h2>Retrieval practice</h2>
+
+  <div class="quiz" data-why="It refetches. The category becomes a query string, the URL changes, and useJson fetches again — usually served straight from the BFF's TTL cache.">
+    <p class="q">Clicking a category bar does what to the filtered charts?</p>
+    <ul class="opts">
+      <li><button>Filters them in memory</button></li>
+      <li><button data-correct>Refetches them from /api</button></li>
+      <li><button>Rebuilds the whole page</button></li>
+      <li><button>Redraws from local storage</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="It clears the filter. The toggle compares current to next and sets null when they match — small detail, and the behaviour users assume.">
+    <p class="q">Clicking the same bar a second time does what?</p>
+    <ul class="opts">
+      <li><button>Narrows the filter further</button></li>
+      <li><button data-correct>Clears the active filter</button></li>
+      <li><button>Reverses the sort order</button></li>
+      <li><button>Opens the detail view</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="From CSS custom properties, read at render time. That is what keeps light and dark defined in exactly one place.">
+    <p class="q">Where do chart colours come from?</p>
+    <ul class="opts">
+      <li><button>Hardcoded chart options</button></li>
+      <li><button data-correct>CSS custom properties</button></li>
+      <li><button>The ECharts default theme</button></li>
+      <li><button>A server-side palette</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="A plain configuration object. The chart is that object — changing the chart means changing it, which is why ECharts feels less React-ish than Recharts.">
+    <p class="q">An ECharts chart is defined by what?</p>
+    <ul class="opts">
+      <li><button>Composed JSX children</button></li>
+      <li><button data-correct>A configuration object</button></li>
+      <li><button>An imperative draw call</button></li>
+      <li><button>A declarative template string</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <p class="score" data-score></p>
+
+  <div class="task">
+    <h3>Do this now — mock mode, nothing can break</h3>
+    <ol>
+      <li>Run the app and click a category bar. Watch the network tab: count how many
+      requests fire, and note which two charts do <em>not</em> refetch.</li>
+      <li>Change one palette variable in <code>client/src/styles.css</code>. Confirm every
+      chart follows without touching a chart option.</li>
+      <li>Set <code>CACHE_TTL_SECONDS=1</code> and click around; then try
+      <code>600</code>. You are feeling lesson 07's lever from the user's side.</li>
+      <li>Optional, and the real test: add one KPI tile end to end. If you can do that
+      unaided, you can maintain this dashboard.</li>
+    </ol>
+  </div>
+
+  <div class="source">
+    <h3>Read this</h3>
+    <p><a href="https://echarts.apache.org/handbook/en/concepts/event/">Events and actions
+    — Apache ECharts handbook</a>. Short, and it covers both halves of interaction:
+    listening with <code>on()</code> and driving a chart from outside with
+    <code>dispatchAction()</code>. The second is how you would highlight a series from
+    another chart's hover.</p>
+  </div>
+
+  <div class="ask">
+    <h3>Ask me</h3>
+    <p>Bring me the KPI tile if it fights you — the interesting part is where you had to
+    change the shape contract, not the JSX. And if you want a chart type this dashboard
+    does not have yet, ask before building: some are one option away, and one of them
+    (the tree) is why ECharts is here at all.</p>
+  </div>
+
+  <nav class="nav">
+    <a href="0007-the-ceilings.html">← Lesson 07</a>
+    <a href="../reference/request-path.html">Reference card</a>
+    <a href="0009-operating.html">Lesson 09 — when it breaks, and deleting the secret →</a>
+  </nav>
+
+</main>
+</body>
+</html>

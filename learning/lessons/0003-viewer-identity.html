@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 03 — How your colleagues get in</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+<main class="wrap">
+
+  <p class="eyebrow">Lesson 03 · Viewer identity</p>
+  <h1>How your colleagues get in</h1>
+  <p class="lede">The viewer side is three switches in a portal and no code at all. The
+  danger is that two of the three default to something more open than you want, and the
+  app will look perfectly fine either way.</p>
+
+  <div class="meta">
+    <span>~30 minutes</span>
+    <span>Builds on lesson 01, hop 2</span>
+    <span>Pairs with figure 6</span>
+    <span data-score></span>
+  </div>
+
+  <div class="quiz" data-why="None — authorization comes from the Dataverse application user and its role. Viewer identity, this lesson's subject, is a completely separate mechanism.">
+    <p class="q">Recall from lesson 02: how many API permissions does the registration need?</p>
+    <ul class="opts">
+      <li><button>Two application permissions</button></li>
+      <li><button data-correct>It needs none</button></li>
+      <li><button>One delegated permission</button></li>
+      <li><button>All Dataverse permissions</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <h2>A gate, not a login page</h2>
+
+  <p><em class="term">Easy Auth</em> is App Service's built-in authentication. Switching it
+  on puts a gate in front of your container: any request without a valid session is
+  redirected to Entra ID to sign in, and only comes back once it has one. Your code never
+  sees an anonymous request and contains no auth logic whatsoever.
+  (<a href="https://learn.microsoft.com/azure/app-service/overview-authentication-authorization">Authentication
+  and authorization in App Service</a>)</p>
+
+  <p>This is the reason lesson 01 called it a feature rather than a part. It is a checkbox
+  on the Web App you will create in lesson 04, not a thing you build.</p>
+
+  <h2>Three switches, and what each one actually decides</h2>
+
+  <table>
+    <thead><tr><th>Switch</th><th>Where</th><th>If you skip it</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Add identity provider → Microsoft</strong></td>
+        <td>Web App → Authentication</td>
+        <td>The site is fully public on the internet</td>
+      </tr>
+      <tr>
+        <td><strong>Require authentication</strong><br>(unauthenticated → redirect)</td>
+        <td>Same blade</td>
+        <td>Anonymous requests are passed through to your app</td>
+      </tr>
+      <tr>
+        <td><strong>Assignment required</strong> + assign a group</td>
+        <td>Entra → Enterprise applications</td>
+        <td><strong>Every user in your tenant can sign in</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout limit">
+    <h3>The third switch is the one people miss</h3>
+    <p>With the first two set, the gate is closed to the internet — and wide open to your
+    entire organisation. "Signed in with a work account" is not the same as "allowed to
+    see this dashboard". The tightening step lives in a different portal blade
+    (<strong>Enterprise applications</strong>, not App registrations), which is exactly why
+    it gets skipped.</p>
+    <p>Your project decided on assignment required plus a named viewer group (ADR-0003).
+    Until that group exists and is assigned, treat the dashboard as company-wide.</p>
+  </div>
+
+  <h2>What the container is told about the viewer</h2>
+
+  <p>Once someone is through, App Service injects headers describing them —
+  <code>X-MS-CLIENT-PRINCIPAL-NAME</code>, <code>X-MS-CLIENT-PRINCIPAL-ID</code>, and a
+  fuller encoded principal.
+  (<a href="https://learn.microsoft.com/azure/app-service/configure-authentication-user-identities">Work
+  with user identities</a>) They are trustworthy because the platform sets them
+  <em>after</em> stripping anything the caller sent, so a browser cannot forge them.</p>
+
+  <p>Now go looking for those headers in your code. You will not find them — and that is
+  correct. This dashboard never asks who you are, because everyone who gets in sees the
+  same numbers. If you ever add "your team's orders only", this is the header you would
+  read, and lesson 07's throttle discussion is where the consequences show up.</p>
+
+  <aside class="side">Add a <code>/api/whoami</code> route that echoes
+  <code>X-MS-CLIENT-PRINCIPAL-NAME</code> and you have a two-line diagnostic for "is the
+  gate actually on?" — useful the first time a deploy behaves oddly.</aside>
+
+  <h2>The road not taken, and why it matters anyway</h2>
+
+  <p>The alternative is <em class="term">on-behalf-of</em>: the BFF exchanges the viewer's
+  own token for a Dataverse token, so each person reads as themselves. Figure 6 draws both
+  side by side. The trade is worth being able to recite:</p>
+
+  <table>
+    <thead><tr><th></th><th>App-level (yours)</th><th>Per-viewer (OBO)</th></tr></thead>
+    <tbody>
+      <tr><td>Dataverse security</td><td>You re-implement any rules in code</td><td>Enforced natively per person</td></tr>
+      <tr><td>Throttle budget</td><td>One bucket shared by everyone</td><td>One bucket each</td></tr>
+      <tr><td>Caching</td><td>Trivial — responses are identical</td><td>Hard — every response differs</td></tr>
+      <tr><td>IT footprint</td><td>One application user</td><td>A security role per viewer</td></tr>
+      <tr><td>Setup</td><td>Minutes</td><td>Days</td></tr>
+    </tbody>
+  </table>
+
+  <p>Read that table as a single sentence: <strong>you traded per-person security for a
+  cache.</strong> That is a defensible trade for an internal dashboard where everyone is
+  allowed to see everything, and an indefensible one the moment they are not. If the
+  requirement ever changes, this is the decision that has to be reopened — not the code.</p>
+
+  <h2>Locally, none of this exists</h2>
+
+  <p>Easy Auth is a property of App Service. On <code>localhost:8080</code> there is no
+  gate, no sign-in, and no headers. That is expected, not a bug — but it does mean
+  "it worked locally" tells you nothing about whether the gate is configured. The first
+  time you deploy, open the site in a private browsing window: if you are not challenged
+  to sign in, one of the three switches is off.</p>
+
+  <h2>Retrieval practice</h2>
+
+  <div class="quiz" data-why="Before it — that is what makes it zero-code. Unauthenticated requests are turned away by the platform and never reach your process.">
+    <p class="q">Where does Easy Auth sit relative to your container?</p>
+    <ul class="opts">
+      <li><button>Inside the container</button></li>
+      <li><button data-correct>Before the container</button></li>
+      <li><button>Behind the container</button></li>
+      <li><button>Within the registry</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="Everyone in the tenant. 'Require authentication' only means signed in — restricting to a group is a separate switch in Enterprise applications.">
+    <p class="q">With authentication required but no assignment, who can sign in?</p>
+    <ul class="opts">
+      <li><button>Only assigned viewers</button></li>
+      <li><button data-correct>Everyone in the tenant</button></li>
+      <li><button>Only tenant administrators</button></li>
+      <li><button>Anyone on the internet</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="The platform sets them after stripping caller-supplied copies, so a browser cannot forge them — which is why no signature checking is needed in your code.">
+    <p class="q">Why can the container trust the client-principal headers?</p>
+    <ul class="opts">
+      <li><button>They are encrypted end-to-end</button></li>
+      <li><button data-correct>The platform overwrites caller values</button></li>
+      <li><button>The browser signs each header</button></li>
+      <li><button>Express validates them by default</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="Caching. Identical responses for everyone is what lets one upstream call serve every viewer — the thing per-viewer identity would destroy.">
+    <p class="q">What does app-level reading buy that per-viewer reading loses?</p>
+    <ul class="opts">
+      <li><button data-correct>Cheap shared response caching</button></li>
+      <li><button>Native per-person security enforcement</button></li>
+      <li><button>A separate throttle budget each</button></li>
+      <li><button>Fewer stored application secrets</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <p class="score" data-score></p>
+
+  <div class="task">
+    <h3>Do this now</h3>
+    <ol>
+      <li>Search the whole repo for <code>X-MS-CLIENT</code>. Confirm it appears nowhere,
+      and be able to say why that is the correct state for this app.</li>
+      <li>Open figure 6 in <code>docs/options-diagrams.html</code>. Cover the right-hand
+      panel and explain the left one out loud; then swap.</li>
+      <li>Write down the name of the Entra group that should hold your viewers. If it does
+      not exist yet, that is an item for the same IT conversation as lesson 02 — atlas
+      §6.1 item <strong>E</strong>.</li>
+      <li>Decide now, and write it in one line: <em>who is allowed to see this
+      dashboard?</em> You will hand that sentence to whoever creates the group.</li>
+    </ol>
+  </div>
+
+  <div class="source">
+    <h3>Read this</h3>
+    <p><a href="https://learn.microsoft.com/azure/app-service/overview-authentication-authorization">Authentication
+    and authorization in Azure App Service</a> — the "How it works" section. Short, and it
+    is the page that makes the gate-in-front model click.</p>
+  </div>
+
+  <div class="ask">
+    <h3>Ask me</h3>
+    <p>Worth asking: "what is the difference between an app registration and an enterprise
+    application?" (they are two views of the same object, and the split is why switch three
+    hides). Also "can I test the gate without deploying?" — short answer, no, and that is
+    worth knowing before you promise a date.</p>
+  </div>
+
+  <nav class="nav">
+    <a href="0002-app-identity.html">← Lesson 02</a>
+    <a href="../reference/request-path.html">Reference card</a>
+    <a href="0004-provisioning.html">Lesson 04 — making the Azure side exist →</a>
+  </nav>
+
+</main>
+</body>
+</html>

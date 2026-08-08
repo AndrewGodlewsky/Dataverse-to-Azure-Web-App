@@ -1,0 +1,1150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Eleven diagrams of the architecture options in docs/options-atlas.md — the live-vs-copy fork, egress paths, auth ladders, CI/CD rungs, and cost per variant.">
+<!--
+  Companion to docs/options-atlas.md — the same facts, drawn.
+  Self-contained: no external CSS, JS, fonts or images. Open it in a browser.
+-->
+<style>html{color-scheme:light dark}*{box-sizing:border-box}body{margin:0}img{max-width:100%}</style>
+<title>Dataverse → Azure: the options, drawn</title>
+
+<style>
+  /* ── tokens: complete light palette on bare :root ─────────────────── */
+  :root {
+    --paper:      #EFEFEC;
+    --surface:    #F8F8F6;
+    --surface-2:  #FFFFFF;
+    --ink:        #191A17;
+    --muted:      #61635C;
+    --rule:       #D5D5CD;
+    --rule-soft:  #E4E4DD;
+    --live:       #9A5B00;
+    --copy:       #4B48AD;
+    --flag:       #A32E36;
+    --live-wash:  #9A5B0014;
+    --copy-wash:  #4B48AD14;
+    --flag-wash:  #A32E3612;
+
+    --sans: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Avenir Next", "Helvetica Neue", system-ui, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
+
+    --measure: 44rem;
+    --wide: 70rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:     #1A1917;
+      --surface:   #232220;
+      --surface-2: #2A2926;
+      --ink:       #EDEDE7;
+      --muted:     #9E9E96;
+      --rule:      #3B3A36;
+      --rule-soft: #302F2C;
+      --live:      #BC8321;
+      --copy:      #8481DC;
+      --flag:      #D26670;
+      --live-wash: #BC832120;
+      --copy-wash: #8481DC20;
+      --flag-wash: #D2667018;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:     #1A1917;
+    --surface:   #232220;
+    --surface-2: #2A2926;
+    --ink:       #EDEDE7;
+    --muted:     #9E9E96;
+    --rule:      #3B3A36;
+    --rule-soft: #302F2C;
+    --live:      #BC8321;
+    --copy:      #8481DC;
+    --flag:      #D26670;
+    --live-wash: #BC832120;
+    --copy-wash: #8481DC20;
+    --flag-wash: #D2667018;
+  }
+
+  /* ── page ─────────────────────────────────────────────────────────── */
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    display: grid;
+    grid-template-columns: minmax(1.25rem, 1fr) min(var(--measure), 100% - 2.5rem) minmax(1.25rem, 1fr);
+    row-gap: 1.15rem;
+    padding: 3rem 0 5rem;
+  }
+  .page > *,
+  .page > section > * { grid-column: 2; }
+  .page .bleed { grid-column: 1 / -1; justify-self: center; width: min(var(--wide), 100% - 2.5rem); }
+
+  h1, h2, h3 { font-weight: 650; letter-spacing: -0.018em; text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(2.1rem, 5.2vw, 3.05rem); line-height: 1.08; }
+  h2 { font-size: 1.52rem; line-height: 1.2; }
+  h3 { font-size: 1.06rem; line-height: 1.3; }
+  p  { margin: 0; }
+  a  { color: inherit; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: var(--live); }
+  :focus-visible { outline: 2px solid var(--live); outline-offset: 3px; border-radius: 2px; }
+  strong { font-weight: 650; }
+  code, .mono { font-family: var(--mono); font-size: 0.86em; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+  }
+  .eyebrow::after { content: ""; height: 1px; flex: 0 0 2.5rem; background: var(--rule); }
+
+  .lede { font-size: 1.14rem; color: var(--muted); }
+  .note { font-size: 0.95rem; color: var(--muted); }
+
+  section { display: contents; }
+  .sec-head { margin-top: 2.6rem; display: flex; flex-direction: column; gap: 0.5rem; }
+
+  /* ── figures ──────────────────────────────────────────────────────── */
+  figure {
+    margin: 1.4rem 0 0;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 1.35rem 1.35rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    overflow-x: auto;
+  }
+  figure .fignum {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  figcaption { font-size: 0.92rem; color: var(--muted); max-width: 62ch; }
+  figcaption b { color: var(--ink); font-weight: 600; }
+  svg.fig { width: 100%; min-width: 640px; height: auto; display: block; color: var(--ink); }
+
+  /* diagram primitives */
+  .fig text { font-family: var(--sans); font-size: 13px; fill: currentColor; }
+  .fig .bx { fill: var(--surface-2); stroke: currentColor; stroke-width: 1.5; }
+  .fig .bx-soft { fill: none; stroke: var(--rule); stroke-width: 1.5; }
+  .fig .bx-dash { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-dasharray: 6 5; opacity: 0.55; }
+  .fig .ln { fill: none; stroke: currentColor; stroke-width: 1.75; }
+  .fig .ln-thin { fill: none; stroke: var(--rule); stroke-width: 1.25; }
+  .fig .dash { stroke-dasharray: 6 5; }
+  .fig .sub { font-size: 11px; fill: var(--muted); font-family: var(--mono); }
+  .fig .tag { font-size: 10px; font-family: var(--mono); letter-spacing: 0.12em; fill: var(--muted); }
+  .fig .num { font-family: var(--mono); font-size: 12px; }
+  .fig .s-live { stroke: var(--live); }
+  .fig .s-copy { stroke: var(--copy); }
+  .fig .s-flag { stroke: var(--flag); }
+  .fig .t-live { fill: var(--live); stroke: none; }
+  .fig .t-copy { fill: var(--copy); stroke: none; }
+  .fig .t-flag { fill: var(--flag); stroke: none; }
+  .fig .f-live { fill: var(--live-wash); stroke: var(--live); stroke-width: 1.5; }
+  .fig .f-copy { fill: var(--copy-wash); stroke: var(--copy); stroke-width: 1.5; }
+  .fig .f-flag { fill: var(--flag-wash); stroke: var(--flag); stroke-width: 1.5; }
+  .fig .ah { fill: currentColor; }
+  .fig .ah-live { fill: var(--live); }
+  .fig .ah-copy { fill: var(--copy); }
+  .fig .ah-flag { fill: var(--flag); }
+
+  /* ── key ──────────────────────────────────────────────────────────── */
+  .key {
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 1rem 1.15rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: 0.75rem 1.5rem;
+    background: var(--surface);
+  }
+  .key-item { display: flex; gap: 0.6rem; align-items: baseline; font-size: 0.9rem; }
+  .swatch { flex: 0 0 1.6rem; height: 3px; border-radius: 2px; transform: translateY(-4px); }
+  .sw-live { background: var(--live); }
+  .sw-copy { background: var(--copy); }
+  .sw-flag { background: var(--flag); }
+  .sw-ink  { background: var(--ink); }
+  .key-item b { font-weight: 600; }
+  .key-item span { color: var(--muted); }
+
+  /* ── contents ─────────────────────────────────────────────────────── */
+  ol.toc { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; counter-reset: t; }
+  ol.toc li { display: flex; gap: 0.85rem; align-items: baseline; font-size: 0.97rem; counter-increment: t; }
+  ol.toc li::before {
+    content: "fig. " counter(t);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    flex: 0 0 3.6rem;
+    letter-spacing: 0.06em;
+  }
+
+  /* ── tables ───────────────────────────────────────────────────────── */
+  .tbl-wrap { overflow-x: auto; margin-top: 1.1rem; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem 0.5rem 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  th {
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom-color: var(--rule);
+  }
+  td.n { font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 0.82rem; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+
+  /* ── callouts ─────────────────────────────────────────────────────── */
+  .callout {
+    border-left: 2px solid var(--flag);
+    background: var(--flag-wash);
+    padding: 0.85rem 1.1rem;
+    border-radius: 0 3px 3px 0;
+    font-size: 0.94rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+  .callout .hd {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--flag);
+  }
+  .callout s { color: var(--muted); }
+
+  .chosen {
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--surface);
+    padding: 1.1rem 1.25rem;
+    display: grid;
+    gap: 0.7rem;
+  }
+  .chosen div { display: grid; grid-template-columns: 8.5rem 1fr; gap: 0.9rem; font-size: 0.94rem; align-items: baseline; }
+  .chosen dt, .chosen .k {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  @media (max-width: 34rem) {
+    .chosen div { grid-template-columns: 1fr; gap: 0.15rem; }
+  }
+
+  details { border-top: 1px solid var(--rule-soft); padding-top: 0.7rem; }
+  summary { cursor: pointer; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  summary:hover { color: var(--ink); }
+</style>
+
+</head>
+<body>
+
+<div class="page">
+
+  <header style="display:flex; flex-direction:column; gap:1rem;">
+    <p class="eyebrow">Options atlas · drawn · 2026-08-08</p>
+    <h1>Dataverse&nbsp;→&nbsp;Azure:<br>the options, drawn</h1>
+    <p class="lede">Eleven pictures of the same system. The frame never changes — a browser, a gate, one container, some data. Everything below is a choice about one edge of that frame, and the biggest one is how the data gets in.</p>
+    <p class="note">Every fact here comes from <span class="mono">docs/options-atlas.md</span> and the six research files behind it. Nothing is new analysis — this is the atlas with the prose taken out.</p>
+  </header>
+
+  <div class="key" aria-label="Key to line colors used in every diagram">
+    <div class="key-item"><span class="swatch sw-live"></span><div><b>Live</b> <span>— queried from Dataverse at request time</span></div></div>
+    <div class="key-item"><span class="swatch sw-copy"></span><div><b>Copy</b> <span>— replicated to a store you own, then queried there</span></div></div>
+    <div class="key-item"><span class="swatch sw-flag"></span><div><b>Wall</b> <span>— a hard limit, a dead path, or a stored secret</span></div></div>
+    <div class="key-item"><span class="swatch sw-ink"></span><div><b>Fixed</b> <span>— the same on every option</span></div></div>
+  </div>
+
+  <ol class="toc">
+    <li>The frame that never changes</li>
+    <li>The one big fork — live, copy, or both</li>
+    <li>Why the fork exists: two ceilings</li>
+    <li>Seven ways out of Dataverse</li>
+    <li>App → Dataverse: the credential ladder</li>
+    <li>Viewer → app: whose identity reaches the data</li>
+    <li>Code → image → registry → running app</li>
+    <li>The CI/CD ladder: what stops being manual</li>
+    <li>Cross-filtering: the reason it's a custom app</li>
+    <li>Which branch is yours</li>
+    <li>What each variant costs per month</li>
+  </ol>
+
+  <!-- ═══ 1 ═══════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">The frame</p>
+      <h2>What never changes</h2>
+    </div>
+    <p>Start with what isn't a choice. A viewer's browser hits an App Service gate; behind it, one container image holds both the React build and the Node backend-for-frontend; the image comes from a registry; the data comes from somewhere. Four edges of that picture are decisions — marked with <span class="mono">◆</span>.</p>
+
+    <figure class="bleed">
+      <p class="fignum">Fig. 1 — the fixed frame and its four decision points</p>
+      <svg class="fig" viewBox="0 0 1000 470" role="img" aria-label="The browser reaches an Easy Auth gate inside Azure Web App for Containers, which fronts one container image holding a React build and a Node BFF. The registry supplies the image; the data source on the right is left open as the main choice. Four decision points are marked: viewer auth, delivery, hosting tier, and egress.">
+        <defs>
+          <marker id="f1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+        </defs>
+
+        <!-- browser -->
+        <rect class="bx" x="28" y="168" width="132" height="64" rx="3"/>
+        <text x="94" y="196" text-anchor="middle">Browser</text>
+        <text x="94" y="214" text-anchor="middle" class="sub">internal tenant user</text>
+        <line class="ln" x1="160" y1="200" x2="214" y2="200" marker-end="url(#f1a)"/>
+        <text x="187" y="190" text-anchor="middle" class="sub">https</text>
+
+        <!-- app service boundary -->
+        <rect class="bx-dash" x="222" y="72" width="470" height="296" rx="4"/>
+        <text x="236" y="94" class="tag">AZURE WEB APP FOR CONTAINERS</text>
+
+        <!-- easy auth gate -->
+        <rect class="bx" x="244" y="160" width="96" height="80" rx="3"/>
+        <text x="292" y="192" text-anchor="middle">Easy Auth</text>
+        <text x="292" y="210" text-anchor="middle" class="sub">Entra gate</text>
+        <text x="292" y="140" text-anchor="middle" class="tag">◆ VIEWER AUTH</text>
+
+        <!-- container -->
+        <rect class="bx" x="388" y="110" width="286" height="224" rx="3"/>
+        <text x="402" y="132" class="tag">ONE CONTAINER IMAGE</text>
+        <rect class="bx-soft" x="406" y="144" width="250" height="58" rx="3"/>
+        <text x="531" y="168" text-anchor="middle">React build (static)</text>
+        <text x="531" y="186" text-anchor="middle" class="sub">charts, cross-filter state</text>
+        <rect class="bx-soft" x="406" y="234" width="250" height="82" rx="3"/>
+        <text x="531" y="260" text-anchor="middle">Node BFF · /api</text>
+        <text x="531" y="278" text-anchor="middle" class="sub">token · cache · retry · paging</text>
+        <text x="531" y="296" text-anchor="middle" class="sub">one upstream for all viewers</text>
+
+        <path class="ln" d="M340 200 H370 V275 H400" marker-end="url(#f1a)"/>
+        <line class="ln" x1="531" y1="234" x2="531" y2="208" marker-end="url(#f1a)"/>
+        <text x="547" y="224" class="sub">serves</text>
+        <text x="470" y="354" text-anchor="middle" class="tag">◆ HOSTING TIER + IMAGE SHAPE</text>
+
+        <!-- data slot -->
+        <rect class="bx-dash" x="742" y="150" width="232" height="150" rx="4"/>
+        <text x="858" y="182" text-anchor="middle" class="tag">THE BIG CHOICE</text>
+        <text x="858" y="212" text-anchor="middle">Dataverse data</text>
+        <text x="858" y="234" text-anchor="middle" class="sub">live · copy · hybrid</text>
+        <text x="858" y="254" text-anchor="middle" class="sub">→ fig. 2</text>
+        <line class="ln" x1="674" y1="275" x2="742" y2="275" marker-end="url(#f1a)"/>
+        <text x="858" y="322" text-anchor="middle" class="tag">◆ EGRESS</text>
+
+        <!-- registry + ci -->
+        <rect class="bx" x="560" y="400" width="180" height="56" rx="3"/>
+        <text x="650" y="424" text-anchor="middle">Container registry</text>
+        <text x="650" y="442" text-anchor="middle" class="sub">ACR</text>
+        <line class="ln" x1="650" y1="400" x2="650" y2="338" marker-end="url(#f1a)"/>
+        <text x="666" y="382" class="sub">pull on restart · managed identity</text>
+
+        <rect class="bx" x="270" y="400" width="180" height="56" rx="3"/>
+        <text x="360" y="424" text-anchor="middle">Build + push</text>
+        <text x="360" y="442" text-anchor="middle" class="sub">manual → automated</text>
+        <line class="ln" x1="450" y1="428" x2="554" y2="428" marker-end="url(#f1a)"/>
+        <text x="360" y="386" text-anchor="middle" class="tag">◆ DELIVERY</text>
+      </svg>
+      <figcaption><b>Four edges are open; the middle is settled.</b> App Service exposes exactly one HTTP port, which is why the React build and the BFF ship as a single image. The browser never reaches the data directly on any option — see fig. 3 for why.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ═══ 2 ═══════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">The fork</p>
+      <h2>Live, copy, or both</h2>
+    </div>
+    <p>Every egress option in the atlas is a variation on one of these three shapes. The boxes are identical in all three — only the arrows move. Hybrid is not a compromise between the other two; it is the shape two of the four sample table configurations actually landed on.</p>
+
+    <figure class="bleed">
+      <p class="fignum">Fig. 2 — the same three components, three wirings</p>
+      <svg class="fig" viewBox="0 0 1000 600" role="img" aria-label="Three wirings of the same components. Live: the BFF queries Dataverse directly. Copy: Dataverse replicates into a copy store every 15 to 60 minutes and the BFF queries the store. Hybrid: the BFF queries both, sending filtered reads, hierarchy traversals and files live while aggregates come from the copy.">
+        <defs>
+          <marker id="f2l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah-live"/></marker>
+          <marker id="f2c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah-copy"/></marker>
+        </defs>
+
+        <!-- ROW 1 : LIVE  (block top y=10) -->
+        <text x="20" y="34" class="tag t-live" style="font-size:12px; letter-spacing:.18em;">LIVE</text>
+        <text x="92" y="34" class="sub">$0/mo · real-time · under the caps → the whole dashboard reads through the Web API or TDS</text>
+        <rect class="bx" x="170" y="76" width="130" height="58" rx="3"/>
+        <text x="235" y="100" text-anchor="middle">Node BFF</text>
+        <text x="235" y="118" text-anchor="middle" class="sub">cache + retry</text>
+        <rect class="bx" x="800" y="76" width="170" height="58" rx="3"/>
+        <text x="885" y="100" text-anchor="middle">Dataverse</text>
+        <text x="885" y="118" text-anchor="middle" class="sub">the system of record</text>
+        <line class="ln s-live" x1="300" y1="105" x2="794" y2="105" marker-end="url(#f2l)"/>
+        <text x="547" y="94" text-anchor="middle" class="sub t-live">queries per request · Web API (OData) or TDS</text>
+        <text x="547" y="128" text-anchor="middle" class="sub">nothing is stored outside Dataverse</text>
+
+        <!-- ROW 2 : COPY  (block top y=200) -->
+        <line class="ln-thin" x1="20" y1="180" x2="980" y2="180"/>
+        <text x="20" y="224" class="tag t-copy" style="font-size:12px; letter-spacing:.18em;">COPY</text>
+        <text x="98" y="224" class="sub">15–60 min stale · no caps · reads never touch Dataverse throttles</text>
+        <rect class="bx" x="470" y="246" width="190" height="52" rx="3"/>
+        <text x="565" y="268" text-anchor="middle">Copy store</text>
+        <text x="565" y="286" text-anchor="middle" class="sub">lake / SQL / Lakehouse</text>
+        <rect class="bx" x="170" y="330" width="130" height="58" rx="3"/>
+        <text x="235" y="354" text-anchor="middle">Node BFF</text>
+        <text x="235" y="372" text-anchor="middle" class="sub">same BFF</text>
+        <rect class="bx" x="800" y="330" width="170" height="58" rx="3"/>
+        <text x="885" y="354" text-anchor="middle">Dataverse</text>
+        <text x="885" y="372" text-anchor="middle" class="sub">untouched by readers</text>
+        <path class="ln s-copy" d="M235 330 V272 H464" marker-end="url(#f2c)"/>
+        <text x="360" y="263" text-anchor="middle" class="sub t-copy">queries (T-SQL)</text>
+        <path class="ln s-copy" d="M885 330 V272 H666" marker-end="url(#f2c)"/>
+        <text x="776" y="263" text-anchor="middle" class="sub t-copy">replicates · 15–60 min</text>
+
+        <!-- ROW 3 : HYBRID (block top y=418) -->
+        <line class="ln-thin" x1="20" y1="410" x2="980" y2="410"/>
+        <text x="20" y="452" class="tag" style="font-size:12px; letter-spacing:.18em;">HYBRID</text>
+        <text x="112" y="452" class="sub">each query lands on the store whose limits it fits — one BFF hides the split</text>
+        <rect class="bx" x="470" y="470" width="190" height="46" rx="3"/>
+        <text x="565" y="490" text-anchor="middle">Copy store</text>
+        <text x="565" y="507" text-anchor="middle" class="sub">aggregates only</text>
+        <rect class="bx" x="170" y="536" width="130" height="52" rx="3"/>
+        <text x="235" y="558" text-anchor="middle">Node BFF</text>
+        <text x="235" y="576" text-anchor="middle" class="sub">one /api</text>
+        <rect class="bx" x="800" y="536" width="170" height="52" rx="3"/>
+        <text x="885" y="558" text-anchor="middle">Dataverse</text>
+        <text x="885" y="576" text-anchor="middle" class="sub">files live here only</text>
+        <path class="ln s-copy" d="M235 536 V493 H464" marker-end="url(#f2c)"/>
+        <text x="360" y="484" text-anchor="middle" class="sub t-copy">global KPIs, trends</text>
+        <path class="ln s-copy" d="M885 536 V493 H666" marker-end="url(#f2c)"/>
+        <text x="776" y="484" text-anchor="middle" class="sub t-copy">replicates</text>
+        <path class="ln s-live" d="M300 570 H794" marker-end="url(#f2l)"/>
+        <text x="547" y="586" text-anchor="middle" class="sub t-live">filtered reads · hierarchy traversals · files (live)</text>
+      </svg>
+      <figcaption><b>Only the arrows differ.</b> The copy store is reached by the same BFF through the same <span class="mono">/api</span>, so the frontend never knows which store answered — which is what makes hybrid cost almost nothing extra once the live leg exists for file fetches anyway.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ═══ 3 ═══════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">The rationale</p>
+      <h2>Why anyone copies at all</h2>
+    </div>
+    <p>Live costs nothing and ships in under a day, so copying only makes sense because of two hard ceilings. Neither is a performance nuisance you can tune around — the first is a shared budget, the second is an error.</p>
+
+    <figure class="bleed">
+      <p class="fignum">Fig. 3 — the two ceilings on the live branch</p>
+      <svg class="fig" viewBox="0 0 1000 430" role="img" aria-label="Two ceilings. Above: every viewer's request funnels through one application user into a single budget of six thousand requests per five minutes. Below: a query aggregating over 1.2 million rows hits the fifty-thousand-row cap and returns an error, while a filtered query over two thousand rows succeeds.">
+        <defs>
+          <marker id="f3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+          <marker id="f3f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah-flag"/></marker>
+        </defs>
+
+        <!-- lane 1 : shared bucket -->
+        <text x="20" y="30" class="tag">CEILING 1 — ONE BUDGET, SHARED BY EVERY VIEWER</text>
+        <rect class="bx-soft" x="24" y="48" width="120" height="34" rx="3"/>
+        <text x="84" y="70" text-anchor="middle" class="sub">viewer 1</text>
+        <rect class="bx-soft" x="24" y="92" width="120" height="34" rx="3"/>
+        <text x="84" y="114" text-anchor="middle" class="sub">viewer 2</text>
+        <rect class="bx-soft" x="24" y="136" width="120" height="34" rx="3"/>
+        <text x="84" y="158" text-anchor="middle" class="sub">viewer n</text>
+        <path class="ln" d="M144 65 H172 V95 H190" marker-end="url(#f3a)"/>
+        <path class="ln" d="M144 109 H190" marker-end="url(#f3a)"/>
+        <path class="ln" d="M144 153 H172 V123 H190" marker-end="url(#f3a)"/>
+
+        <rect class="bx" x="196" y="78" width="150" height="62" rx="3"/>
+        <text x="271" y="102" text-anchor="middle">Node BFF</text>
+        <text x="271" y="120" text-anchor="middle" class="sub">collapses n → 1</text>
+        <line class="ln" x1="346" y1="109" x2="416" y2="109" marker-end="url(#f3a)"/>
+        <text x="381" y="98" text-anchor="middle" class="sub">1 app user</text>
+
+        <!-- bucket -->
+        <rect class="f-flag" x="422" y="60" width="250" height="98" rx="3"/>
+        <text x="547" y="86" text-anchor="middle">6,000 requests / 5 min</text>
+        <text x="547" y="106" text-anchor="middle" class="sub">+ 20 min compute · 52 concurrent</text>
+        <text x="547" y="141" text-anchor="middle" class="sub">one bucket — not one per viewer</text>
+        <line class="ln" x1="672" y1="109" x2="742" y2="109" marker-end="url(#f3a)"/>
+        <rect class="bx" x="748" y="78" width="170" height="62" rx="3"/>
+        <text x="833" y="102" text-anchor="middle">Dataverse</text>
+        <text x="833" y="120" text-anchor="middle" class="sub">5,000 rows / page</text>
+        <text x="930" y="176" text-anchor="end" class="sub">exceed it → 429 + Retry-After, for everyone at once</text>
+
+        <!-- divider -->
+        <line class="ln-thin" x1="20" y1="212" x2="980" y2="212"/>
+
+        <!-- lane 2 : aggregate cap -->
+        <text x="20" y="248" class="tag">CEILING 2 — AGGREGATES ABOVE 50,000 ROWS ARE AN ERROR, NOT A SLOWDOWN</text>
+        <rect class="bx" x="24" y="272" width="150" height="112" rx="3"/>
+        <text x="99" y="322" text-anchor="middle">Node BFF</text>
+        <text x="99" y="340" text-anchor="middle" class="sub">two queries</text>
+
+        <rect class="f-flag" x="234" y="268" width="330" height="52" rx="3"/>
+        <text x="399" y="290" text-anchor="middle">“revenue by month, all time”</text>
+        <text x="399" y="308" text-anchor="middle" class="sub">groupby scans 1,200,000 rows</text>
+        <path class="ln s-flag" d="M174 294 H228" marker-end="url(#f3f)"/>
+        <line class="ln s-flag" x1="622" y1="256" x2="622" y2="332" stroke-width="3"/>
+        <path class="ln s-flag" d="M564 294 H614" marker-end="url(#f3f)"/>
+        <text x="636" y="286" class="t-flag" style="font-size:12.5px;">50,000-row cap</text>
+        <text x="636" y="304" class="sub t-flag">hard error — no paging around it</text>
+
+        <rect class="bx-soft" x="234" y="342" width="330" height="52" rx="3"/>
+        <text x="399" y="364" text-anchor="middle">“this account’s open orders”</text>
+        <text x="399" y="382" text-anchor="middle" class="sub">filtered scan ≈ 2,000 rows</text>
+        <path class="ln" d="M174 368 H228" marker-end="url(#f3a)"/>
+        <path class="ln" d="M564 368 H700" marker-end="url(#f3a)"/>
+        <text x="712" y="364" class="sub">returns fine — live is a good fit</text>
+        <text x="712" y="382" class="sub">for filtered, per-entity reads</text>
+      </svg>
+      <figcaption><b>These two ceilings, not feature preference, are what push a workload to a copy.</b> Everything else about live — cost, setup time, security fidelity — is better. Exceeding a ceiling isn't a bigger bill; it's an outage or a hard error.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ═══ 4 ═══════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">Layer — egress</p>
+      <h2>Seven ways out of Dataverse</h2>
+    </div>
+    <p>Two live paths and five copy paths, all ending at the same BFF. Read the annotations as <span class="mono">setup&nbsp;·&nbsp;cost&nbsp;·&nbsp;freshness</span> — those three, in that order, are what actually separates them.</p>
+
+    <figure class="bleed">
+      <p class="fignum">Fig. 4 — every supported path from Dataverse to the app</p>
+      <svg class="fig" viewBox="0 0 1000 570" role="img" aria-label="Seven paths from Dataverse to the Node BFF. Two live paths, the Web API and the TDS SQL endpoint, run straight through. Five copy paths — Synapse Link CSV, Synapse Link Delta, Fabric Link, Power Platform dataflows and Azure Data Factory — each replicate into a store which the BFF then queries.">
+        <defs>
+          <marker id="f4l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah-live"/></marker>
+          <marker id="f4c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah-copy"/></marker>
+        </defs>
+
+        <rect class="bx" x="24" y="270" width="146" height="70" rx="3"/>
+        <text x="97" y="298" text-anchor="middle">Dataverse</text>
+        <text x="97" y="316" text-anchor="middle" class="sub">your environment</text>
+
+        <rect class="bx" x="836" y="270" width="140" height="70" rx="3"/>
+        <text x="906" y="298" text-anchor="middle">Node BFF</text>
+        <text x="906" y="316" text-anchor="middle" class="sub">one /api</text>
+
+        <!-- live trunks -->
+        <path class="ln s-live" d="M170 298 H206 V96"/>
+        <path class="ln s-live" d="M206 156 H274" marker-end="url(#f4l)"/>
+        <path class="ln s-live" d="M206 96 H274" marker-end="url(#f4l)"/>
+        <path class="ln s-live" d="M610 96 H786 V298 H830" marker-end="url(#f4l)"/>
+        <path class="ln s-live" d="M610 156 H786"/>
+
+        <text x="280" y="58" class="tag t-live" style="letter-spacing:.16em;">LIVE — QUERIED AT REQUEST TIME</text>
+        <rect class="f-live" x="280" y="72" width="330" height="48" rx="3"/>
+        <text x="296" y="94">Dataverse Web API — OData v4</text>
+        <text x="296" y="112" class="sub">&lt;1 day · $0 · real-time · FetchXML hierarchies</text>
+        <rect class="f-live" x="280" y="132" width="330" height="48" rx="3"/>
+        <text x="296" y="154">TDS / SQL endpoint</text>
+        <text x="296" y="172" class="sub">&lt;1 day · $0 · real-time · no elastic tables</text>
+
+        <!-- copy trunks -->
+        <path class="ln s-copy" d="M170 312 H214 V504"/>
+        <path class="ln s-copy" d="M214 264 H274" marker-end="url(#f4c)"/>
+        <path class="ln s-copy" d="M214 324 H274" marker-end="url(#f4c)"/>
+        <path class="ln s-copy" d="M214 384 H274" marker-end="url(#f4c)"/>
+        <path class="ln s-copy" d="M214 444 H274" marker-end="url(#f4c)"/>
+        <path class="ln s-copy" d="M214 504 H274" marker-end="url(#f4c)"/>
+
+        <text x="280" y="228" class="tag t-copy" style="letter-spacing:.16em;">COPY — REPLICATED FIRST, QUERIED THERE</text>
+
+        <rect class="f-copy" x="280" y="240" width="286" height="48" rx="3"/>
+        <text x="294" y="262">Synapse Link — CSV</text>
+        <text x="294" y="280" class="sub">1–2 days · $1–20/mo · 15–45 min</text>
+        <path class="ln s-copy" d="M566 264 H590" marker-end="url(#f4c)"/>
+        <rect class="bx" x="596" y="242" width="170" height="44" rx="3"/>
+        <text x="681" y="269" text-anchor="middle" class="sub">ADLS + serverless SQL</text>
+
+        <rect class="f-copy" x="280" y="300" width="286" height="48" rx="3"/>
+        <text x="294" y="322">Synapse Link — Delta</text>
+        <text x="294" y="340" class="sub">2–4 days · tens–low 100s · 5–1440 min</text>
+        <path class="ln s-copy" d="M566 324 H590" marker-end="url(#f4c)"/>
+        <rect class="bx" x="596" y="302" width="170" height="44" rx="3"/>
+        <text x="681" y="329" text-anchor="middle" class="sub">Delta Lake + Spark</text>
+
+        <rect class="f-copy" x="280" y="360" width="286" height="48" rx="3"/>
+        <text x="294" y="382">Fabric Link</text>
+        <text x="294" y="400" class="sub">hours* · ~$263+/mo · 15–60 min</text>
+        <path class="ln s-copy" d="M566 384 H590" marker-end="url(#f4c)"/>
+        <rect class="bx" x="596" y="362" width="170" height="44" rx="3"/>
+        <text x="681" y="389" text-anchor="middle" class="sub">Lakehouse + SQL</text>
+
+        <rect class="f-copy" x="280" y="420" width="286" height="48" rx="3"/>
+        <text x="294" y="442">Power Platform dataflows</text>
+        <text x="294" y="460" class="sub">hours · storage cost only · ≤48/day</text>
+        <path class="ln s-copy" d="M566 444 H590" marker-end="url(#f4c)"/>
+        <rect class="bx" x="596" y="422" width="170" height="44" rx="3"/>
+        <text x="681" y="449" text-anchor="middle" class="sub">your own ADLS</text>
+
+        <rect class="f-copy" x="280" y="480" width="286" height="48" rx="3"/>
+        <text x="294" y="502">Azure Data Factory</text>
+        <text x="294" y="520" class="sub">~1 day · $5–50/mo + sink · scheduled</text>
+        <path class="ln s-copy" d="M566 504 H590" marker-end="url(#f4c)"/>
+        <rect class="bx" x="596" y="482" width="170" height="44" rx="3"/>
+        <text x="681" y="509" text-anchor="middle" class="sub">Azure SQL (any sink)</text>
+
+        <path class="ln s-copy" d="M766 264 H794 V312 H830" marker-end="url(#f4c)"/>
+        <path class="ln s-copy" d="M766 324 H794"/>
+        <path class="ln s-copy" d="M766 384 H794"/>
+        <path class="ln s-copy" d="M766 444 H794"/>
+        <path class="ln s-copy" d="M766 504 H794 V320"/>
+
+        <text x="24" y="556" class="sub">* Fabric Link is hours <tspan class="t-flag">only if an F-SKU capacity already exists</tspan> — procurement is the long pole otherwise.</text>
+      </svg>
+      <figcaption><b>The copy paths all add a hop you own.</b> That hop is where the aggregate cap disappears and where Dataverse's own security model stops applying — storage or SQL permissions become the boundary instead.</figcaption>
+    </figure>
+
+    <div class="callout">
+      <p class="hd">Dead paths — they still show up in blog posts</p>
+      <p><s>Data Export Service</s> (EOL Nov 2022) · <s>Export to Data Lake</s> (decommissioning from Mar 2025) · <s>OData v2 Organization Data Service</s> (removed — the platform returns an error) · <s>2011 SOAP endpoint</s> (no Node story) · <s>BYOD</s> (steered away from) · <s>Synapse Link “in-place update” CSV mode</s> (legacy; doesn't scale).</p>
+    </div>
+  </section>
+
+  <!-- ═══ 5 ═══════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">Layer — auth, server side</p>
+      <h2>How the app proves it may read</h2>
+    </div>
+    <p>Four rungs, one base. The base — an app registration with <em>no API permissions</em>, bound to an unlicensed Dataverse application user carrying a read-only role — is identical on every rung; authorization comes from that binding, not from Entra scopes. What changes is only what the app presents to get a token, and whether that thing is a secret someone has to store and rotate.</p>
+
+    <figure class="bleed">
+      <p class="fignum">Fig. 5 — the S2S credential ladder</p>
+      <svg class="fig" viewBox="0 0 1000 470" role="img" aria-label="A shared base of app registration, Dataverse application user and a custom read-only role, above four credential rungs: client secret and certificate both require stored secret material, while managed identity and federated identity credential require none.">
+        <defs>
+          <marker id="f5a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+          <marker id="f5f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah-flag"/></marker>
+        </defs>
+
+        <!-- base chain -->
+        <rect class="bx" x="24" y="26" width="250" height="54" rx="3"/>
+        <text x="149" y="48" text-anchor="middle">Entra app registration</text>
+        <text x="149" y="66" text-anchor="middle" class="sub">single tenant · no API permissions</text>
+        <line class="ln" x1="274" y1="53" x2="322" y2="53" marker-end="url(#f5a)"/>
+        <rect class="bx" x="328" y="26" width="250" height="54" rx="3"/>
+        <text x="453" y="48" text-anchor="middle">Dataverse application user</text>
+        <text x="453" y="66" text-anchor="middle" class="sub">unlicensed · consumes nothing</text>
+        <line class="ln" x1="578" y1="53" x2="626" y2="53" marker-end="url(#f5a)"/>
+        <rect class="bx" x="632" y="26" width="250" height="54" rx="3"/>
+        <text x="757" y="48" text-anchor="middle">Role: Dashboard Reader</text>
+        <text x="757" y="66" text-anchor="middle" class="sub">read-only, org scope</text>
+        <text x="24" y="106" class="tag">◆ THIS BASE IS IDENTICAL ON ALL FOUR RUNGS — ONLY THE CREDENTIAL BELOW CHANGES</text>
+        <line class="ln-thin" x1="24" y1="122" x2="976" y2="122"/>
+
+        <!-- entra token column -->
+        <rect class="bx-dash" x="770" y="150" width="206" height="282" rx="4"/>
+        <text x="873" y="182" text-anchor="middle">Entra token endpoint</text>
+        <text x="873" y="200" text-anchor="middle" class="sub">scope: /.default</text>
+        <text x="873" y="404" text-anchor="middle" class="sub">→ bearer token →</text>
+        <text x="873" y="422" text-anchor="middle" class="sub">Dataverse Web API</text>
+
+        <!-- rung 1 -->
+        <text x="24" y="190">Client secret</text>
+        <text x="24" y="208" class="sub">minutes to set up</text>
+        <rect class="f-flag" x="210" y="164" width="500" height="52" rx="3"/>
+        <text x="228" y="186">A string in an app setting or Key Vault</text>
+        <text x="228" y="204" class="sub t-flag">expires in 1–2 years · shown once · rotation is yours</text>
+        <path class="ln s-flag" d="M710 190 H764" marker-end="url(#f5f)"/>
+
+        <!-- rung 2 -->
+        <text x="24" y="262">Certificate</text>
+        <text x="24" y="280" class="sub">hours — issue + upload</text>
+        <rect class="f-flag" x="210" y="236" width="500" height="52" rx="3"/>
+        <text x="228" y="258">A private key, which needs a home</text>
+        <text x="228" y="276" class="sub t-flag">higher assurance than a shared string · still renews on expiry</text>
+        <path class="ln s-flag" d="M710 262 H764" marker-end="url(#f5f)"/>
+
+        <!-- rung 3 -->
+        <text x="24" y="334">Managed identity</text>
+        <text x="24" y="352" class="sub">hours · Azure + PPAC</text>
+        <rect class="bx" x="210" y="308" width="500" height="52" rx="3"/>
+        <text x="228" y="330">The Web App’s own identity — no registration at all</text>
+        <text x="228" y="348" class="sub">its application id is registered directly as the app user</text>
+        <path class="ln" d="M710 334 H764" marker-end="url(#f5a)"/>
+
+        <!-- rung 4 -->
+        <text x="24" y="406">Federated credential</text>
+        <text x="24" y="424" class="sub">hours · the end state</text>
+        <rect class="bx" x="210" y="380" width="500" height="52" rx="3"/>
+        <text x="228" y="402">The registration trusts the Web App’s identity</text>
+        <text x="228" y="420" class="sub">audience api://AzureADTokenExchange · a governable registration, no secret</text>
+        <path class="ln" d="M710 406 H764" marker-end="url(#f5a)"/>
+      </svg>
+      <figcaption><b>Red means secret material exists somewhere.</b> The bottom two rungs remove it entirely; the difference between them is whether you keep an app registration to govern (federated credential) or drop it and let the managed identity be the application user directly. Both need the same Power Platform admin step either way.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ═══ 6 ═══════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">Layer — auth, viewer side</p>
+      <h2>Whose identity reaches the data</h2>
+    </div>
+    <p>The viewer-side choice looks like a login question but is really a question about throttling and caching. Either the app reads as itself and decides what each viewer may see, or each viewer's own token travels all the way to Dataverse.</p>
+
+    <figure class="bleed">
+      <p class="fignum">Fig. 6 — app-level reads vs per-viewer reads</p>
+      <svg class="fig" viewBox="0 0 1000 340" role="img" aria-label="Left panel: with Easy Auth alone, the viewer identity stops at the BFF, which reads Dataverse as one application user sharing one throttle bucket, and responses cache easily. Right panel: with on-behalf-of, the viewer token continues to Dataverse, giving per-viewer security and per-viewer throttle buckets but near-uncacheable responses.">
+        <defs>
+          <marker id="f6a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+          <marker id="f6l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah-live"/></marker>
+        </defs>
+
+        <!-- panel A -->
+        <text x="24" y="30" class="tag" style="letter-spacing:.16em;">A · EASY AUTH ONLY — THE APP READS AS ITSELF</text>
+        <rect class="bx" x="24" y="96" width="96" height="52" rx="3"/>
+        <text x="72" y="118" text-anchor="middle" class="sub">viewer</text>
+        <text x="72" y="136" text-anchor="middle" class="sub">browser</text>
+        <rect class="bx" x="140" y="96" width="96" height="52" rx="3"/>
+        <text x="188" y="118" text-anchor="middle" class="sub">Easy Auth</text>
+        <text x="188" y="136" text-anchor="middle" class="sub">Entra gate</text>
+        <rect class="bx" x="256" y="96" width="96" height="52" rx="3"/>
+        <text x="304" y="118" text-anchor="middle" class="sub">Node BFF</text>
+        <text x="304" y="136" text-anchor="middle" class="sub">app user</text>
+        <rect class="bx" x="372" y="96" width="106" height="52" rx="3"/>
+        <text x="425" y="118" text-anchor="middle" class="sub">Dataverse</text>
+        <line class="ln" x1="120" y1="122" x2="134" y2="122" marker-end="url(#f6a)"/>
+        <line class="ln" x1="236" y1="122" x2="250" y2="122" marker-end="url(#f6a)"/>
+        <line class="ln" x1="352" y1="122" x2="366" y2="122" marker-end="url(#f6a)"/>
+        <path class="ln s-live" d="M72 76 H300"/>
+        <text x="186" y="66" text-anchor="middle" class="sub t-live">viewer identity travels this far</text>
+        <path class="ln s-flag" d="M310 68 L326 84 M326 68 L310 84" stroke-width="2.2"/>
+        <text x="336" y="80" class="sub t-flag">stops here</text>
+        <text x="24" y="192" class="sub">→ one shared bucket: 6,000 req / 5 min for everyone</text>
+        <text x="24" y="214" class="sub">→ the BFF decides what each viewer may see</text>
+        <text x="24" y="236" class="sub">→ responses are identical, so caching is trivial</text>
+        <text x="24" y="266" class="tag">SETUP: MINUTES · NO AUTH CODE IN THE APP</text>
+
+        <line class="ln-thin" x1="500" y1="20" x2="500" y2="300"/>
+
+        <!-- panel B -->
+        <text x="524" y="30" class="tag" style="letter-spacing:.16em;">B · ON-BEHALF-OF — EACH VIEWER READS AS THEMSELVES</text>
+        <rect class="bx" x="524" y="96" width="96" height="52" rx="3"/>
+        <text x="572" y="118" text-anchor="middle" class="sub">viewer</text>
+        <text x="572" y="136" text-anchor="middle" class="sub">browser</text>
+        <rect class="bx" x="640" y="96" width="96" height="52" rx="3"/>
+        <text x="688" y="118" text-anchor="middle" class="sub">gate + token</text>
+        <text x="688" y="136" text-anchor="middle" class="sub">store</text>
+        <rect class="bx" x="756" y="96" width="96" height="52" rx="3"/>
+        <text x="804" y="118" text-anchor="middle" class="sub">Node BFF</text>
+        <text x="804" y="136" text-anchor="middle" class="sub">exchanges it</text>
+        <rect class="bx" x="872" y="96" width="104" height="52" rx="3"/>
+        <text x="924" y="118" text-anchor="middle" class="sub">Dataverse</text>
+        <text x="924" y="136" text-anchor="middle" class="sub">per-user rules</text>
+        <line class="ln" x1="620" y1="122" x2="634" y2="122" marker-end="url(#f6a)"/>
+        <line class="ln" x1="736" y1="122" x2="750" y2="122" marker-end="url(#f6a)"/>
+        <line class="ln" x1="852" y1="122" x2="866" y2="122" marker-end="url(#f6a)"/>
+        <path class="ln s-live" d="M572 76 H918" marker-end="url(#f6l)"/>
+        <text x="740" y="66" text-anchor="middle" class="sub t-live">viewer identity goes all the way</text>
+        <text x="524" y="192" class="sub">→ one bucket per viewer — the shared ceiling lifts</text>
+        <text x="524" y="214" class="sub">→ Dataverse enforces row and column security itself</text>
+        <text x="524" y="236" class="sub">→ every response is viewer-specific, so caching gets hard</text>
+        <text x="524" y="266" class="tag">SETUP: DAYS · DELEGATED PERMISSION + A ROLE PER VIEWER</text>
+        <text x="524" y="296" class="sub">the token can come from Easy Auth’s token store —</text>
+        <text x="524" y="314" class="sub">in-app MSAL is only needed for a custom sign-in UI</text>
+      </svg>
+      <figcaption><b>The trade is security fidelity against cacheability.</b> App-level keeps the IT ask small and the cache simple but duplicates any per-viewer rule in your code; per-viewer gets Dataverse's own enforcement and its own throttle budget, at the cost of a role assignment per person and a cache that mostly can't be shared.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ═══ 7 ═══════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">Layer — container</p>
+      <h2>Code → image → registry → running app</h2>
+    </div>
+    <p>Two halves that people often merge by mistake: how the image is <em>built and pushed</em>, and how the running app <em>gets</em> it. The second half is pull-based — App Service fetches on restart, using its own identity, and no credential is stored anywhere.</p>
+
+    <figure class="bleed">
+      <p class="fignum">Fig. 7 — the build half and the pull half</p>
+      <svg class="fig" viewBox="0 0 1000 420" role="img" aria-label="Top: source code builds either locally with Docker or in Azure with az acr build, both pushing one multi-stage image to Azure Container Registry. Bottom: the Web App pulls that image on restart, authenticating with its managed identity holding AcrPull.">
+        <defs>
+          <marker id="f7a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+        </defs>
+
+        <text x="24" y="28" class="tag" style="letter-spacing:.16em;">HALF 1 — BUILD AND PUSH</text>
+        <rect class="bx" x="24" y="60" width="150" height="60" rx="3"/>
+        <text x="99" y="84" text-anchor="middle">Your repo</text>
+        <text x="99" y="102" text-anchor="middle" class="sub">Dockerfile + src</text>
+
+        <rect class="bx-soft" x="234" y="42" width="290" height="46" rx="3"/>
+        <text x="248" y="62">docker build + push</text>
+        <text x="248" y="79" class="sub">needs Docker Desktop locally</text>
+        <rect class="bx" x="234" y="102" width="290" height="46" rx="3"/>
+        <text x="248" y="122">az acr build</text>
+        <text x="248" y="139" class="sub">in Azure · ~$0.03 · no local Docker</text>
+        <path class="ln dash" d="M174 84 H200 V65 H228" marker-end="url(#f7a)"/>
+        <path class="ln" d="M174 96 H200 V125 H228" marker-end="url(#f7a)"/>
+
+        <path class="ln" d="M524 65 H534 V97"/>
+        <path class="ln" d="M524 125 H534 V97"/>
+        <path class="ln" d="M534 97 H540" marker-end="url(#f7a)"/>
+
+        <rect class="bx-dash" x="546" y="34" width="212" height="126" rx="4"/>
+        <text x="558" y="56" class="tag">ONE MULTI-STAGE IMAGE</text>
+        <rect class="bx-soft" x="560" y="66" width="184" height="38" rx="3"/>
+        <text x="652" y="90" text-anchor="middle" class="sub">stage 1 · vite build</text>
+        <rect class="bx-soft" x="560" y="112" width="184" height="38" rx="3"/>
+        <text x="652" y="136" text-anchor="middle" class="sub">stage 2 · node + express</text>
+
+        <rect class="bx" x="806" y="66" width="170" height="60" rx="3"/>
+        <text x="891" y="90" text-anchor="middle">ACR Basic</text>
+        <text x="891" y="108" text-anchor="middle" class="sub">$5/mo · 10 GiB</text>
+        <line class="ln" x1="758" y1="97" x2="800" y2="97" marker-end="url(#f7a)"/>
+
+        <line class="ln-thin" x1="24" y1="196" x2="976" y2="196"/>
+
+        <text x="24" y="232" class="tag" style="letter-spacing:.16em;">HALF 2 — PULL AND RUN</text>
+        <rect class="bx" x="24" y="266" width="170" height="60" rx="3"/>
+        <text x="109" y="290" text-anchor="middle">ACR Basic</text>
+        <text x="109" y="308" text-anchor="middle" class="sub">the same registry</text>
+
+        <rect class="bx-dash" x="330" y="248" width="360" height="130" rx="4"/>
+        <text x="344" y="270" class="tag">AZURE WEB APP FOR CONTAINERS</text>
+        <rect class="bx" x="348" y="282" width="200" height="76" rx="3"/>
+        <text x="448" y="308" text-anchor="middle" class="sub">the running container</text>
+        <text x="448" y="328" text-anchor="middle" class="sub">listens on 8080</text>
+        <text x="448" y="346" text-anchor="middle" class="sub">WEBSITES_PORT=8080</text>
+        <rect class="bx-soft" x="566" y="282" width="108" height="76" rx="3"/>
+        <text x="620" y="310" text-anchor="middle" class="sub">managed</text>
+        <text x="620" y="328" text-anchor="middle" class="sub">identity</text>
+        <text x="620" y="346" text-anchor="middle" class="sub">(AcrPull)</text>
+
+        <path class="ln" d="M194 288 H324" marker-end="url(#f7a)"/>
+        <text x="259" y="278" text-anchor="middle" class="sub">docker pull on restart</text>
+        <path class="ln dash" d="M620 378 V408 H109 V332" marker-end="url(#f7a)"/>
+        <text x="330" y="390" class="sub">presents an ARM token — no registry password exists anywhere</text>
+
+        <text x="716" y="290" class="sub">plan tier is a separate knob:</text>
+        <text x="716" y="310" class="sub">B1 $12.41 · P0v3 $56.58</text>
+        <text x="716" y="330" class="sub">(slots + autoscale start at P0v3)</text>
+      </svg>
+      <figcaption><b>Nothing in this picture stores a credential.</b> The identity arrow is switched on with <span class="mono">acrUseManagedIdentityCreds=true</span>. Its alternative — the registry admin account — is a single shared username and password with no RBAC, disabled by default, and usually forbidden by tenant policy.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ═══ 8 ═══════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">Layer — delivery</p>
+      <h2>What stops being manual</h2>
+    </div>
+    <p>The rungs are additive, not exclusive — starting manual and layering later costs nothing you have to undo. Read each row left to right and ask only one question: which of these steps still needs a person?</p>
+
+    <figure class="bleed">
+      <p class="fignum">Fig. 8 — the CI/CD ladder, drawn as who does what</p>
+      <svg class="fig" viewBox="0 0 1000 476" role="img" aria-label="Four CI/CD rungs across the same five steps — commit, build, push to registry, restart and pull, live. Manual has every step done by hand; az acr build plus a webhook automates the push and restart; GitHub Actions with OIDC automates everything from the git push; Azure DevOps does the same on a second system.">
+        <defs>
+          <marker id="f8a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+        </defs>
+
+        <text x="250" y="34" text-anchor="middle" class="tag">COMMIT</text>
+        <text x="400" y="34" text-anchor="middle" class="tag">BUILD</text>
+        <text x="550" y="34" text-anchor="middle" class="tag">PUSH TO ACR</text>
+        <text x="700" y="34" text-anchor="middle" class="tag">RESTART + PULL</text>
+        <text x="850" y="34" text-anchor="middle" class="tag">LIVE</text>
+        <line class="ln-thin" x1="24" y1="48" x2="976" y2="48"/>
+
+        <!-- rung 1 -->
+        <text x="24" y="94">Manual</text>
+        <text x="24" y="112" class="sub">setup ~0 · no secrets</text>
+        <path class="ln dash" d="M250 100 H842" marker-end="url(#f8a)"/>
+        <circle cx="250" cy="100" r="5" fill="currentColor"/><circle cx="400" cy="100" r="5" fill="currentColor"/>
+        <circle cx="550" cy="100" r="5" fill="currentColor"/><circle cx="700" cy="100" r="5" fill="currentColor"/>
+        <circle cx="850" cy="100" r="5" fill="currentColor"/>
+        <text x="250" y="130" class="sub">every step by hand · 5–10 minutes per deploy · the app never pulls on its own</text>
+
+        <!-- rung 2 -->
+        <text x="24" y="194">az acr build + webhook</text>
+        <text x="24" y="212" class="sub">setup ~1 h · no secrets</text>
+        <path class="ln dash" d="M250 200 H400"/>
+        <path class="ln" d="M400 200 H842" marker-end="url(#f8a)"/>
+        <circle cx="250" cy="200" r="5" fill="currentColor"/><circle cx="400" cy="200" r="5" fill="currentColor"/>
+        <circle cx="550" cy="200" r="5" fill="currentColor"/><circle cx="700" cy="200" r="5" fill="currentColor"/>
+        <circle cx="850" cy="200" r="5" fill="currentColor"/>
+        <text x="325" y="184" text-anchor="middle" class="sub">you run one command</text>
+        <text x="625" y="184" text-anchor="middle" class="sub">ACR webhook restarts the app</text>
+        <text x="250" y="230" class="sub">best effort-to-payoff ratio · no local Docker · <tspan class="t-flag">the webhook 401s if basic auth is disabled</tspan></text>
+
+        <!-- rung 3 -->
+        <text x="24" y="294">GitHub Actions + OIDC</text>
+        <text x="24" y="312" class="sub">setup ~½ day · 3 non-secret ids</text>
+        <path class="ln" d="M250 300 H842" marker-end="url(#f8a)"/>
+        <circle cx="250" cy="300" r="5" fill="currentColor"/><circle cx="400" cy="300" r="5" fill="currentColor"/>
+        <circle cx="550" cy="300" r="5" fill="currentColor"/><circle cx="700" cy="300" r="5" fill="currentColor"/>
+        <circle cx="850" cy="300" r="5" fill="currentColor"/>
+        <text x="325" y="284" text-anchor="middle" class="sub">git push triggers everything</text>
+        <text x="625" y="284" text-anchor="middle" class="sub">tests and lint can gate the deploy</text>
+        <text x="250" y="330" class="sub">the recommended end state — no long-lived secret; a user-assigned identity avoids needing directory rights</text>
+
+        <!-- rung 4 -->
+        <text x="24" y="394">Azure DevOps</text>
+        <text x="24" y="412" class="sub">setup ~1 day</text>
+        <path class="ln" d="M250 400 H842" marker-end="url(#f8a)"/>
+        <circle cx="250" cy="400" r="5" fill="currentColor"/><circle cx="400" cy="400" r="5" fill="currentColor"/>
+        <circle cx="550" cy="400" r="5" fill="currentColor"/><circle cx="700" cy="400" r="5" fill="currentColor"/>
+        <circle cx="850" cy="400" r="5" fill="currentColor"/>
+        <text x="250" y="430" class="sub">works even with basic auth disabled — but the repo is on GitHub, so it means a second system for no functional gain</text>
+
+        <text x="24" y="462" class="sub">dashed = a person does it · solid = it happens on its own</text>
+      </svg>
+      <figcaption><b>Rung 2 buys the most per hour spent; rung 3 is the end state.</b> Both can be blocked by tenant policy rather than effort — check the basic-auth and app-registration policies before promising a cadence.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ═══ 9 ═══════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">Layer — frontend</p>
+      <h2>The interaction that made this a custom app</h2>
+    </div>
+    <p>Cross-filtering is the founding requirement — clicking a bar in one chart re-filters the others. It's why a canned reporting surface was ruled out at framing time, and it's the thing the chart library has to support natively or you hand-roll.</p>
+
+    <figure class="bleed">
+      <p class="fignum">Fig. 9 — where the cross-filter loop actually runs</p>
+      <svg class="fig" viewBox="0 0 1000 300" role="img" aria-label="Inside the browser, clicking a bar updates a shared filter state which re-renders the KPI and trend charts with no server round trip. Only an unloaded slice reaches the BFF, which serves it from cache or fetches it from the live or copied store.">
+        <defs>
+          <marker id="f9a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+        </defs>
+
+        <rect class="bx-dash" x="24" y="40" width="560" height="230" rx="4"/>
+        <text x="38" y="62" class="tag">THE BROWSER</text>
+
+        <rect class="bx" x="46" y="78" width="150" height="90" rx="3"/>
+        <rect x="66" y="130" width="18" height="28" fill="currentColor" opacity="0.28" rx="2"/>
+        <rect x="92" y="112" width="18" height="46" fill="var(--live)" rx="2"/>
+        <rect x="118" y="140" width="18" height="18" fill="currentColor" opacity="0.28" rx="2"/>
+        <rect x="144" y="122" width="18" height="36" fill="currentColor" opacity="0.28" rx="2"/>
+        <text x="121" y="100" text-anchor="middle" class="sub">category bar chart</text>
+        <text x="121" y="188" text-anchor="middle" class="sub t-live">click one bar</text>
+
+        <rect class="f-live" x="246" y="96" width="130" height="56" rx="3"/>
+        <text x="311" y="120" text-anchor="middle" class="sub">shared filter</text>
+        <text x="311" y="138" text-anchor="middle" class="sub">state</text>
+        <path class="ln s-live" d="M196 124 H240" marker-end="url(#f9a)"/>
+
+        <rect class="bx" x="424" y="72" width="140" height="48" rx="3"/>
+        <text x="494" y="101" text-anchor="middle" class="sub">KPI tiles re-render</text>
+        <rect class="bx" x="424" y="132" width="140" height="48" rx="3"/>
+        <text x="494" y="161" text-anchor="middle" class="sub">revenue line re-renders</text>
+        <path class="ln s-live" d="M376 116 H400 V96 H418" marker-end="url(#f9a)"/>
+        <path class="ln s-live" d="M376 132 H400 V156 H418" marker-end="url(#f9a)"/>
+        <text x="300" y="212" text-anchor="middle" class="sub">state changes the URL, so filtered views refetch</text>
+        <text x="300" y="234" text-anchor="middle" class="sub">charts that ignore the filter never refetch at all</text>
+
+        <path class="ln dash" d="M584 155 H660" marker-end="url(#f9a)"/>
+        <text x="628" y="143" text-anchor="middle" class="sub">refetch</text>
+        <rect class="bx" x="666" y="118" width="150" height="74" rx="3"/>
+        <text x="741" y="146" text-anchor="middle">Node BFF</text>
+        <text x="741" y="164" text-anchor="middle" class="sub">TTL cache first</text>
+        <text x="741" y="182" text-anchor="middle" class="sub">then upstream</text>
+        <path class="ln dash" d="M816 155 H890" marker-end="url(#f9a)"/>
+        <text x="932" y="150" text-anchor="middle" class="sub">live or</text>
+        <text x="932" y="168" text-anchor="middle" class="sub">copied store</text>
+      </svg>
+      <figcaption><b>State lives in the browser; the data still comes from the BFF.</b> In this implementation the filter becomes a query string, so the views that depend on it refetch and the TTL cache absorbs the cost — which makes cache TTL part of interaction latency, not just throttle protection. Filtering entirely in the browser is the alternative: instant clicks, bigger first load.</figcaption>
+    </figure>
+
+    <div class="tbl-wrap">
+      <table>
+        <caption class="note" style="text-align:left; padding-bottom:.6rem;">Chart libraries against this project's shapes — bundle sizes are min+gzip for the full package.</caption>
+        <thead>
+          <tr><th>Library</th><th>Hierarchies</th><th>Cross-filtering</th><th class="n">Bundle</th><th>The catch</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Apache ECharts</strong></td><td>treemap, sunburst, <em>tree</em></td><td>built in</td><td class="n">~368 kB</td><td>options object, not JSX; wrapper is community-maintained</td></tr>
+          <tr><td>Recharts v3</td><td>treemap, sunburst — no tree</td><td>hand-rolled</td><td class="n">~148 kB</td><td>no org-chart/BOM view; SVG strains on dense series</td></tr>
+          <tr><td>Chart.js</td><td>treemap plugin only</td><td>none built in</td><td class="n">~68 kB</td><td>smallest and fastest, fewest shapes</td></tr>
+          <tr><td>visx</td><td>treemap + tree</td><td>you build it</td><td class="n">modular</td><td>a primitives kit — highest ceiling, slowest to first pixel</td></tr>
+          <tr><td>AG Charts Community</td><td>Enterprise-only</td><td>Enterprise-only</td><td class="n">~388 kB</td><td>effectively disqualified: the needed shapes cost $499/dev</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══ 10 ═══════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">Choosing</p>
+      <h2>Which branch is yours</h2>
+    </div>
+    <p>Four questions against your real tables. They aren't weighted — any single yes on the top pair forces a copy for those queries, and any single yes on the bottom pair forces a live leg. Both kinds of yes together is the hybrid shape.</p>
+
+    <figure class="bleed">
+      <p class="fignum">Fig. 10 — the decision, four questions deep</p>
+      <svg class="fig" viewBox="0 0 1000 660" role="img" aria-label="A flowchart of four questions. Aggregates over fifty thousand rows or very high volume elastic tables push those queries to a copy. Column-secured fields, hierarchy operators, or file columns keep those reads live. All no means live only; both kinds of yes means hybrid.">
+        <defs>
+          <marker id="f10a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah"/></marker>
+          <marker id="f10c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah-copy"/></marker>
+          <marker id="f10l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="ah-live"/></marker>
+        </defs>
+
+        <rect class="bx" x="180" y="22" width="300" height="46" rx="3"/>
+        <text x="330" y="51" text-anchor="middle">Take your heaviest dashboard query</text>
+        <line class="ln" x1="330" y1="68" x2="330" y2="94" marker-end="url(#f10a)"/>
+
+        <!-- Q1 -->
+        <polygon class="bx" points="330,100 480,146 330,192 180,146"/>
+        <text x="330" y="141" text-anchor="middle" style="font-size:12.5px;">Does any groupby scan</text>
+        <text x="330" y="158" text-anchor="middle" style="font-size:12.5px;">≥ 50,000 rows?</text>
+        <path class="ln s-copy" d="M480 146 H634" marker-end="url(#f10c)"/>
+        <text x="500" y="136" class="sub t-copy">yes</text>
+        <rect class="f-copy" x="640" y="122" width="336" height="48" rx="3"/>
+        <text x="656" y="144">Those aggregates need a copy</text>
+        <text x="656" y="161" class="sub">the cap is a hard error, not a slowdown</text>
+        <line class="ln" x1="330" y1="192" x2="330" y2="222" marker-end="url(#f10a)"/>
+        <text x="340" y="212" class="sub">no</text>
+
+        <!-- Q2 -->
+        <polygon class="bx" points="330,228 480,274 330,320 180,274"/>
+        <text x="330" y="269" text-anchor="middle" style="font-size:12.5px;">Elastic tables, or millions</text>
+        <text x="330" y="286" text-anchor="middle" style="font-size:12.5px;">of rows a year?</text>
+        <path class="ln s-copy" d="M480 274 H634" marker-end="url(#f10c)"/>
+        <text x="500" y="264" class="sub t-copy">yes</text>
+        <rect class="f-copy" x="640" y="250" width="336" height="48" rx="3"/>
+        <text x="656" y="272">The analytical core is copy-only</text>
+        <text x="656" y="289" class="sub">elastic tables aren’t in TDS at all</text>
+        <line class="ln" x1="330" y1="320" x2="330" y2="350" marker-end="url(#f10a)"/>
+        <text x="340" y="340" class="sub">no</text>
+
+        <!-- Q3 -->
+        <polygon class="bx" points="330,356 480,402 330,448 180,402"/>
+        <text x="330" y="397" text-anchor="middle" style="font-size:12.5px;">Column-secured fields, or</text>
+        <text x="330" y="414" text-anchor="middle" style="font-size:12.5px;">Under/Above hierarchy?</text>
+        <path class="ln s-live" d="M480 402 H634" marker-end="url(#f10l)"/>
+        <text x="500" y="392" class="sub t-live">yes</text>
+        <rect class="f-live" x="640" y="378" width="336" height="48" rx="3"/>
+        <text x="656" y="400">Those reads stay live</text>
+        <text x="656" y="417" class="sub">column security and the operators are live-only</text>
+        <line class="ln" x1="330" y1="448" x2="330" y2="478" marker-end="url(#f10a)"/>
+        <text x="340" y="468" class="sub">no</text>
+
+        <!-- Q4 -->
+        <polygon class="bx" points="330,484 480,530 330,576 180,530"/>
+        <text x="330" y="525" text-anchor="middle" style="font-size:12.5px;">Any file or image</text>
+        <text x="330" y="542" text-anchor="middle" style="font-size:12.5px;">columns on the page?</text>
+        <path class="ln s-live" d="M480 530 H634" marker-end="url(#f10l)"/>
+        <text x="500" y="520" class="sub t-live">yes</text>
+        <rect class="f-live" x="640" y="506" width="336" height="48" rx="3"/>
+        <text x="656" y="528">A live leg is required regardless</text>
+        <text x="656" y="545" class="sub">files don’t flow through Synapse Link</text>
+
+        <!-- outcomes -->
+        <line class="ln" x1="330" y1="576" x2="330" y2="606" marker-end="url(#f10a)"/>
+        <text x="340" y="596" class="sub">no</text>
+        <rect class="f-live" x="24" y="612" width="290" height="40" rx="3"/>
+        <text x="40" y="638" class="t-live" style="font-weight:600;">All no → LIVE-ONLY</text>
+        <rect class="bx" x="336" y="612" width="300" height="40" rx="3"/>
+        <text x="352" y="638" style="font-weight:600;">A yes on both halves → HYBRID</text>
+        <rect class="f-copy" x="658" y="612" width="318" height="40" rx="3"/>
+        <text x="674" y="638" class="t-copy" style="font-weight:600;">Only the top half → COPY</text>
+      </svg>
+      <figcaption><b>Two of the four sample configurations landed on hybrid</b> — a transactional core and a hierarchy-plus-documents shape both trip a question in each half. Hybrid costs almost nothing extra once the live leg exists for files anyway.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ═══ 11 ═══════════════════════════════════════════════════════════ -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">The bill</p>
+      <h2>What each variant costs per month</h2>
+    </div>
+    <p>List prices, East US, every variant including the container base (registry $5 plus the plan) and effectively-free CI/CD. Ranges are real ranges — the copy variants bill partly by what you scan.</p>
+
+    <figure class="bleed">
+      <p class="fignum">Fig. 11 — monthly run cost by architecture variant</p>
+      <svg class="fig" viewBox="0 0 1000 366" role="img" aria-label="Range chart of monthly cost. Live-minimal 17 dollars, live-production 62 dollars, hybrid 20 to 80, copy via Synapse CSV 20 to 80, copy via Synapse Delta 50 to 200, copy via Fabric 280 to 330 dollars.">
+        <!-- gridlines -->
+        <line class="ln-thin" x1="250" y1="66" x2="250" y2="320"/>
+        <line class="ln-thin" x1="444" y1="66" x2="444" y2="320"/>
+        <line class="ln-thin" x1="639" y1="66" x2="639" y2="320"/>
+        <line class="ln-thin" x1="833" y1="66" x2="833" y2="320"/>
+        <text x="250" y="342" text-anchor="middle" class="sub">$0</text>
+        <text x="444" y="342" text-anchor="middle" class="sub">$100</text>
+        <text x="639" y="342" text-anchor="middle" class="sub">$200</text>
+        <text x="833" y="342" text-anchor="middle" class="sub">$300</text>
+        <text x="24" y="40" class="tag">MONTHLY RUN COST — LIST PRICE, EAST US</text>
+
+        <!-- rows -->
+        <text x="236" y="95" text-anchor="end" class="sub">Live-minimal · B1</text>
+        <rect x="277" y="84" width="12" height="14" rx="4" fill="var(--live)"><title>Live-minimal (Web API + B1 plan): about $17/month</title></rect>
+        <text x="300" y="95" class="num t-live">$17</text>
+
+        <text x="236" y="137" text-anchor="end" class="sub">Live-production · P0v3</text>
+        <rect x="364" y="126" width="12" height="14" rx="4" fill="var(--live)"><title>Live-production (Web API + P0v3 plan): about $62/month</title></rect>
+        <text x="388" y="137" class="num t-live">$62</text>
+
+        <text x="236" y="179" text-anchor="end" class="sub">Hybrid · live + Synapse</text>
+        <rect x="289" y="168" width="116" height="14" rx="4" fill="var(--copy)"><title>Hybrid (live reads + Synapse aggregates): $20–80/month</title></rect>
+        <rect x="283" y="168" width="10" height="14" rx="4" fill="var(--live)" stroke="var(--surface)" stroke-width="2"/>
+        <text x="417" y="179" class="num">$20–80</text>
+
+        <text x="236" y="221" text-anchor="end" class="sub">Copy · Synapse CSV</text>
+        <rect x="289" y="210" width="116" height="14" rx="4" fill="var(--copy)"><title>Copy via Synapse Link CSV + serverless SQL: $20–80/month</title></rect>
+        <text x="417" y="221" class="num t-copy">$20–80</text>
+
+        <text x="236" y="263" text-anchor="end" class="sub">Copy · Synapse Delta</text>
+        <rect x="347" y="252" width="292" height="14" rx="4" fill="var(--copy)"><title>Copy via Synapse Link Delta + Spark: $50–200/month</title></rect>
+        <text x="651" y="263" class="num t-copy">$50–200</text>
+
+        <text x="236" y="305" text-anchor="end" class="sub">Copy · Fabric F2</text>
+        <rect x="794" y="294" width="97" height="14" rx="4" fill="var(--copy)"><title>Copy via Fabric Link on an F2 capacity: $280–330/month</title></rect>
+        <text x="782" y="305" text-anchor="end" class="num t-copy">$280–330</text>
+      </svg>
+      <figcaption><b>The live variants' $0 egress is bounded by the ceilings in fig. 3</b> — exceeding one isn't a bigger bill, it's an outage. Fabric's floor bills whether or not anyone opens the dashboard; Synapse serverless bills per terabyte scanned, so an uncached dashboard has a variable tail.</figcaption>
+      <details>
+        <summary>Table view</summary>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Variant</th><th>Egress</th><th>Container base</th><th class="n">Total / month</th></tr></thead>
+            <tbody>
+              <tr><td>Live-minimal</td><td>$0</td><td>ACR Basic + B1 — $17.41</td><td class="n">≈ $17</td></tr>
+              <tr><td>Live-production</td><td>$0</td><td>ACR Basic + P0v3 — $61.58</td><td class="n">≈ $62</td></tr>
+              <tr><td>Hybrid</td><td>~$1–20 (live leg adds $0)</td><td>$17.41–61.58</td><td class="n">≈ $20–80</td></tr>
+              <tr><td>Copy — Synapse CSV</td><td>ADLS ~$0.02/GB-mo + $5/TB scanned</td><td>$17.41–61.58</td><td class="n">≈ $20–80</td></tr>
+              <tr><td>Copy — Synapse Delta</td><td>Spark vCore-hours</td><td>$17.41–61.58</td><td class="n">≈ $50–200+</td></tr>
+              <tr><td>Copy — Fabric F2</td><td>~$263 + Dataverse storage draw</td><td>$17.41–61.58</td><td class="n">≈ $280–330+</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </figure>
+  </section>
+
+  <!-- ═══ closing ═════════════════════════════════════════════════════ -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">Where this project sits</p>
+      <h2>The path already chosen</h2>
+    </div>
+    <p>Every fork above was resolved for this build in seven architecture decision records. The picture below each figure, in one column:</p>
+
+    <div class="chosen">
+      <div><span class="k">Fig. 2 · fork</span><span><b>Live only</b> — no copy store, with a tripwire: an aggregate needing ≥50k rows or sustained 429s reopens the copy branch additively.</span></div>
+      <div><span class="k">Fig. 4 · egress</span><span><b>Dataverse Web API</b> through the BFF.</span></div>
+      <div><span class="k">Fig. 5 · credential</span><span><b>Client secret now, federated credential as the end state</b> — the swap point is one function, <span class="mono">getToken()</span>.</span></div>
+      <div><span class="k">Fig. 6 · viewers</span><span><b>Easy Auth + assignment required + a viewer group.</b> No per-user OBO; everyone with access sees everything.</span></div>
+      <div><span class="k">Fig. 7 · container</span><span><b>One multi-stage image, ACR Basic, B1 Linux plan, managed-identity pull.</b></span></div>
+      <div><span class="k">Fig. 8 · delivery</span><span><b>Rung 1, manual, by choice</b> — <span class="mono">az acr build</span> plus a restart. The higher rungs were deliberately not adopted yet.</span></div>
+      <div><span class="k">Fig. 9 · frontend</span><span><b>Vite + Express + Apache ECharts.</b> Cross-filtering already works: click a category bar, the KPIs and revenue line follow.</span></div>
+      <div><span class="k">Fig. 11 · cost</span><span><b>≈ $17/month</b> — the live-minimal line.</span></div>
+    </div>
+
+    <p class="note" style="margin-top:1.4rem;">The one thing fig. 10 can't answer yet: the real table inventory was never taken — four synthetic configurations stood in for it. The first time this design meets actual row counts is when the live provider is pointed at real tables, and that's the moment the fig. 3 ceilings either hold or trip.</p>
+  </section>
+
+
+
+</div>
+
+</body>
+</html>

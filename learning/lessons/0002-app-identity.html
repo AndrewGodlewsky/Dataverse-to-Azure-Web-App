@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 02 — How the app proves it may read</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+<main class="wrap">
+
+  <p class="eyebrow">Lesson 02 · App identity</p>
+  <h1>How the app proves it may read</h1>
+  <p class="lede">Three separate objects have to exist before a single row comes back, and
+  they live in two different admin portals. Most first-time S2S failures are one of the
+  three simply missing.</p>
+
+  <div class="meta">
+    <span>~40 minutes</span>
+    <span>Builds on lesson 01, hop 6</span>
+    <span>Pairs with figure 5</span>
+    <span data-score></span>
+  </div>
+
+  <div class="quiz" data-why="The BFF — a credential in browser JavaScript is a published credential. Everything in this lesson is about what that credential actually is.">
+    <p class="q">Recall from lesson 01: which part holds the Dataverse credential?</p>
+    <ul class="opts">
+      <li><button>The React build</button></li>
+      <li><button data-correct>The Node BFF</button></li>
+      <li><button>The Easy Auth gate</button></li>
+      <li><button>The container registry</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <h2>Three objects, two portals</h2>
+
+  <p>Hop 6 of the trace was one sentence: "the BFF presents the app's own credential and
+  gets a token." Underneath, that requires three things to exist. Keep them distinct —
+  people conflate them constantly, and the error messages will not help you.</p>
+
+  <ul class="parts">
+    <li>
+      <span class="who">Lives in Entra ID (Azure portal)</span>
+      <span class="name">1 · The app registration</span>
+      <span class="body">An <em class="term">identity</em> for a piece of software, the
+      way a user account is an identity for a person. It gets an
+      <strong>Application (client) ID</strong> and a credential. That is all it is: proof
+      of who is calling. It grants no access to anything.</span>
+    </li>
+    <li>
+      <span class="who">Lives in Dataverse (Power Platform admin center)</span>
+      <span class="name">2 · The application user</span>
+      <span class="body">An account <em>inside your Dataverse environment</em> that is
+      bound to that Application ID. This is the moment Dataverse agrees the registration
+      is someone it knows. It consumes <strong>no licence</strong>.</span>
+    </li>
+    <li>
+      <span class="who">Lives in Dataverse</span>
+      <span class="name">3 · The security role</span>
+      <span class="body">What that application user may do — here, Read on a named list
+      of tables and nothing else. Assigned to the application user from object 2.</span>
+    </li>
+  </ul>
+
+  <p><strong>Identity, account, permission.</strong> One in Azure, two in Power Platform.
+  If you remember nothing else from this lesson, remember that the app registration by
+  itself opens no doors at all.</p>
+
+  <h2>The surprising part: no API permissions</h2>
+
+  <p>If you have ever registered an app before, you will expect to add API permissions and
+  click "Grant admin consent". For this pattern you do not. Microsoft's documentation is
+  explicit: "If your app uses Server-to-Server (S2S) authentication, you don't need to
+  complete this step."
+  (<a href="https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth">Use
+  OAuth with Dataverse</a>)</p>
+
+  <p>The reason is the whole design: <strong>authorization does not come from Entra
+  here</strong>. It comes from the binding in object 2 plus the role in object 3. Entra
+  answers only "is this really that app?" Dataverse answers "and what may it read?"</p>
+
+  <aside class="side">This is why the IT ask is small. You are not requesting access to a
+  Microsoft API — you are requesting an identity, and then your own Dataverse admin
+  decides what it can see.</aside>
+
+  <div class="callout">
+    <h3>What this means when IT pushes back</h3>
+    <p>A security reviewer asking "what permissions does this app registration have?" can
+    be told, truthfully: <em>none</em>. It has no delegated or application permissions to
+    any API. Its only power is whatever the Dataverse security role grants, which is Read
+    on a listed set of tables, revocable in the admin center without touching Azure.</p>
+  </div>
+
+  <h2>The token, in your own code</h2>
+
+  <p>Open <code>server/dataverse.js</code>. The whole of hop 6 is this:</p>
+
+  <pre><code>cca ??= new ConfidentialClientApplication({
+  auth: {
+    clientId: CLIENT_ID,
+    authority: `https://login.microsoftonline.com/${TENANT_ID}`,
+    clientSecret: CLIENT_SECRET,
+  },
+});
+const result = await cca.acquireTokenByClientCredential({
+  scopes: [`${DATAVERSE_URL}/.default`],
+});</code></pre>
+
+  <p>Read it as a sentence: <em>"I am CLIENT_ID, in directory TENANT_ID, and here is my
+  CLIENT_SECRET as proof. Give me a token for DATAVERSE_URL."</em> That is the
+  <em class="term">client credentials flow</em> — the OAuth flow for software acting as
+  itself, with no human involved.
+  (<a href="https://learn.microsoft.com/entra/msal/javascript/node/acquire-token-requests">MSAL
+  Node — acquire token</a>)</p>
+
+  <p>So your four environment variables are not four arbitrary settings. Three of them are
+  the sentence above, and the fourth is the address:</p>
+
+  <table>
+    <thead><tr><th>Variable</th><th>Answers</th><th>Where IT gets it</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">TENANT_ID</td><td>Which directory?</td><td>Directory (tenant) ID on the registration</td></tr>
+      <tr><td class="mono">CLIENT_ID</td><td>Which app?</td><td>Application (client) ID on the registration</td></tr>
+      <tr><td class="mono">CLIENT_SECRET</td><td>Prove it</td><td>Certificates &amp; secrets → New client secret</td></tr>
+      <tr><td class="mono">DATAVERSE_URL</td><td>Token for what, and call where?</td><td>Your environment's URL</td></tr>
+    </tbody>
+  </table>
+
+  <p>Note that <code>DATAVERSE_URL</code> does double duty: it becomes the
+  <em class="term">scope</em> (<code>.../.default</code> means "every permission this app
+  already has for that resource") and the base of every request URL.</p>
+
+  <h2>The credential ladder — and why yours is rung one</h2>
+
+  <p>A shared secret string is the fastest credential and the weakest. There are four
+  rungs, and figure 5 draws all of them. The important structural fact: the three objects
+  above are <strong>identical on every rung</strong>. Only what the app presents changes.</p>
+
+  <table>
+    <thead><tr><th>Rung</th><th>Secret exists?</th><th>Setup</th></tr></thead>
+    <tbody>
+      <tr><td>Client secret</td><td>Yes — expires in 1–2 years</td><td>Minutes</td></tr>
+      <tr><td>Certificate</td><td>Yes — a private key needs a home</td><td>Hours</td></tr>
+      <tr><td>Managed identity, direct</td><td>No — skips the registration entirely</td><td>Hours</td></tr>
+      <tr><td>Federated credential</td><td>No — registration trusts the Web App</td><td>Hours</td></tr>
+    </tbody>
+  </table>
+
+  <p>Your project deliberately starts at rung one and plans to end at rung four
+  (ADR-0002), because rungs three and four need a Web App that does not exist yet. The
+  code was written for that: the swap replaces <code>getToken()</code> and nothing else.
+  You will do it in lesson 09.</p>
+
+  <div class="callout limit">
+    <h3>The gotcha that produces silent wrong data</h3>
+    <p>If any dashboard column is <em class="term">column-secured</em> in Dataverse — a
+    salary, a credit limit — a valid token and a correct security role are still not
+    enough. The application user must also be added to a <strong>column security
+    profile</strong>, or those columns come back masked rather than erroring.
+    (<a href="https://learn.microsoft.com/power-platform/admin/field-level-security">Column-level
+    security</a>) A chart of masked values looks like a data problem, not a permissions
+    problem. That is what makes it expensive.</p>
+  </div>
+
+  <h2>Retrieval practice</h2>
+
+  <div class="quiz" data-why="None. Authorization comes from the Dataverse application user and its security role — Entra only answers 'is this really that app?'">
+    <p class="q">How many API permissions does the app registration need?</p>
+    <ul class="opts">
+      <li><button>All Dataverse permissions</button></li>
+      <li><button>One delegated permission</button></li>
+      <li><button data-correct>It needs none</button></li>
+      <li><button>Two application permissions</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="The Power Platform admin center — objects 2 and 3 both live in Dataverse, not Azure. This is why the IT request has items in two different portals.">
+    <p class="q">Where is the application user created?</p>
+    <ul class="opts">
+      <li><button>The Azure portal</button></li>
+      <li><button data-correct>Power Platform admin</button></li>
+      <li><button>The Entra portal</button></li>
+      <li><button>The Dataverse maker</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="Nothing. It is explicitly an unlicensed user — which is what makes 'one app reads on behalf of everyone' cheap compared with licensing each viewer.">
+    <p class="q">What licence does the application user consume?</p>
+    <ul class="opts">
+      <li><button>One per viewer</button></li>
+      <li><button>One Power Apps</button></li>
+      <li><button data-correct>It consumes none</button></li>
+      <li><button>One Dynamics seat</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="Masked values come back. A correct token and a correct role are not enough for secured columns — the application user needs a column security profile too.">
+    <p class="q">A column-secured field with no profile assigned returns what?</p>
+    <ul class="opts">
+      <li><button data-correct>Masked placeholder values</button></li>
+      <li><button>A clear permission error</button></li>
+      <li><button>An empty result set</button></li>
+      <li><button>A throttling status code</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="order" data-why="Identity, then account, then permission, then proof. Three of these are one-time setup by an administrator; only the last happens on every cache miss.">
+    <p class="q">Click these in the order they must exist.</p>
+    <ul class="opts">
+      <li><button data-pos="3">A security role grants Read on the tables</button></li>
+      <li><button data-pos="1">An app registration exists in Entra ID</button></li>
+      <li><button data-pos="4">The BFF exchanges its secret for a token</button></li>
+      <li><button data-pos="2">An application user binds it to Dataverse</button></li>
+    </ul>
+    <p class="progress"></p>
+    <p class="why"></p>
+  </div>
+
+  <p class="score" data-score></p>
+
+  <div class="task">
+    <h3>Do this now</h3>
+    <ol>
+      <li>Open <code>server/dataverse.js</code> and read <code>getToken()</code>. Say out
+      loud which line is "who I am", which is "here is my proof", and which is "for what".</li>
+      <li>Open <code>.env.example</code>. For each of the four variables, name which of the
+      three objects it comes from.</li>
+      <li>Open <code>docs/options-atlas.md</code> and find §6.1. Items <strong>A, B and
+      C</strong> are the three objects in this lesson, written as a request someone else
+      can act on. Read it as a checklist you now understand rather than a form.</li>
+      <li>Answer this in your head, as if a security reviewer asked: <em>"If this app is
+      compromised, what can the attacker read?"</em> Being able to answer precisely is the
+      point of the lesson.</li>
+    </ol>
+  </div>
+
+  <div class="source">
+    <h3>Read this</h3>
+    <p><a href="https://learn.microsoft.com/power-apps/developer/data-platform/authenticate-oauth">Use
+    OAuth authentication with Microsoft Dataverse</a> — specifically the "Connect as an
+    app" section. It is the canonical statement of everything above, and the page to send
+    IT if they query the "no API permissions" claim.</p>
+  </div>
+
+  <div class="ask">
+    <h3>Ask me</h3>
+    <p>Good questions at this point: "what is a tenant, really?", "what stops someone else
+    using our client ID?", "what happens the day the secret expires?" That last one is not
+    hypothetical — put the expiry date in your calendar the day IT sends it.</p>
+  </div>
+
+  <nav class="nav">
+    <a href="0001-the-frame.html">← Lesson 01</a>
+    <a href="../reference/request-path.html">Reference card</a>
+    <a href="0003-viewer-identity.html">Lesson 03 — how your colleagues get in →</a>
+  </nav>
+
+</main>
+</body>
+</html>

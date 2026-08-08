@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference — the request path</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="wrap">
+
+  <p class="eyebrow">Reference card · built from lesson 01</p>
+  <h1>The request path</h1>
+  <p class="lede">One page. The parts, the hops, and — the part you will actually reach
+  for — which part to suspect when something breaks. Prints on a single sheet.</p>
+
+  <h2>The five parts</h2>
+
+  <table>
+    <thead><tr><th>Part</th><th>Who runs it</th><th>Its job</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Dataverse</strong></td><td>Microsoft</td><td>System of record: rows, security model, web API</td><td class="mono">already paid</td></tr>
+      <tr><td><strong>Container image</strong></td><td>You build it</td><td>React build + Node BFF, frozen into one artifact</td><td class="mono">—</td></tr>
+      <tr><td><strong>Container registry</strong></td><td>Azure, you own it</td><td>Stores the image so Azure can pull it</td><td class="mono">$5.00/mo</td></tr>
+      <tr><td><strong>Web App for Containers</strong></td><td>Azure</td><td>Runs the image, terminates HTTPS, hosts the gate</td><td class="mono">$12.41/mo (B1)</td></tr>
+      <tr><td><strong>Entra ID</strong></td><td>Microsoft, your tenant</td><td>Issues identity — for viewers and for the app</td><td class="mono">$0</td></tr>
+    </tbody>
+  </table>
+
+  <h2>The seven hops</h2>
+
+  <ol class="trace">
+    <li><span class="hop">Front end</span><span class="detail">HTTPS terminated by Azure.</span></li>
+    <li><span class="hop">Easy Auth</span><span class="detail">No session → Entra sign-in → cookie. Your code sees nothing yet.</span></li>
+    <li><span class="hop">Forward to the one port</span><span class="detail">Identity arrives as <code>X-MS-CLIENT-PRINCIPAL*</code> headers.</span></li>
+    <li><span class="hop">Node serves the shell</span><span class="detail">HTML + JS bundle. Charts render empty.</span></li>
+    <li><span class="hop"><code>/api</code>, same origin</span><span class="detail">No CORS by construction.</span></li>
+    <li><span class="hop">Cache miss → token</span><span class="detail">App credential → Entra → bearer token for Dataverse.</span></li>
+    <li><span class="hop">Dataverse answers</span><span class="detail">Role checked, rows returned, BFF caches and shapes.</span></li>
+  </ol>
+
+  <p><strong>Never happens:</strong> browser → Dataverse. On any option.</p>
+
+  <h2>Two identities</h2>
+
+  <table>
+    <thead><tr><th></th><th>Viewer identity</th><th>App identity</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Belongs to</strong></td><td>A human colleague</td><td>The dashboard itself</td></tr>
+      <tr><td><strong>Proves</strong></td><td>May open this site</td><td>May read these tables</td></tr>
+      <tr><td><strong>Checked by</strong></td><td>Easy Auth, once at the gate</td><td>Dataverse, on every query</td></tr>
+      <tr><td><strong>Stops at</strong></td><td>Your container</td><td>Dataverse</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Settings that must line up</h2>
+
+  <table>
+    <thead><tr><th>Setting</th><th>Value here</th><th>What it actually does</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">EXPOSE</td><td class="mono">8080</td><td>Declares the port in the Dockerfile</td></tr>
+      <tr><td class="mono">PORT (fallback)</td><td class="mono">8080</td><td>What the Node process really listens on</td></tr>
+      <tr><td class="mono">WEBSITES_PORT</td><td class="mono">8080</td><td>Tells App Service where to forward. <strong>Not</strong> visible inside the container</td></tr>
+      <tr><td class="mono">acrUseManagedIdentityCreds</td><td class="mono">true</td><td>Pull the image with an identity instead of a password</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout limit">
+    <h3>The trap</h3>
+    <p><code>WEBSITES_PORT</code> is not injected into the container
+    (<a href="https://learn.microsoft.com/azure/app-service/reference-app-settings#custom-containers">App
+    settings reference</a>). The three 8080s above line up because they were each set to
+    8080 — not because one feeds another.</p>
+  </div>
+
+  <h2>Symptom → suspect</h2>
+
+  <table>
+    <thead><tr><th>What you see</th><th>Suspect</th><th>Check</th></tr></thead>
+    <tbody>
+      <tr><td>Blank page or 502 after deploy</td><td>Port mismatch</td><td><code>WEBSITES_PORT</code> vs what the process listens on; then the container log stream</td></tr>
+      <tr><td>Site never starts, log says image pull failed</td><td>Registry auth</td><td>Managed identity has <strong>AcrPull</strong>; <code>acrUseManagedIdentityCreds</code> is true</td></tr>
+      <tr><td>Deployed a new image, nothing changed</td><td>No restart</td><td>App Service pulls on restart — restart it, or wire the webhook</td></tr>
+      <tr><td>Sign-in loop, or strangers can get in</td><td>Easy Auth config</td><td>Provider enabled, "require authentication", assignment required + group</td></tr>
+      <tr><td>Page loads, charts empty, <code>/api</code> returns 502</td><td>App identity</td><td>The four env vars; then the security role on the application user</td></tr>
+      <tr><td>Some columns blank, others fine</td><td>Column security</td><td>Application user needs a column security profile for secured columns</td></tr>
+      <tr><td>Works, then fails under load, recovers</td><td>Throttling</td><td>429 + <code>Retry-After</code>: all viewers share one 6,000 / 5 min budget</td></tr>
+      <tr><td>One chart errors, the rest are fine</td><td>Aggregate cap</td><td>That query scans ≥ 50,000 rows — a hard error, not a slowdown</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Where it lives in the repo</h2>
+
+  <table>
+    <thead><tr><th>File</th><th>Holds</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">Dockerfile</td><td>Both build stages; <code>EXPOSE 8080</code></td></tr>
+      <tr><td class="mono">server/index.js</td><td>Routes, static serving, port choice — hops 3–5</td></tr>
+      <tr><td class="mono">server/dataverse.js</td><td><code>getToken()</code> and the paged, retrying query — hops 6–7</td></tr>
+      <tr><td class="mono">server/provider.js</td><td>Mock vs live switch; the table/column names to edit</td></tr>
+      <tr><td class="mono">server/cache.js</td><td>The TTL cache that collapses viewers into one call</td></tr>
+      <tr><td class="mono">client/src/EChart.jsx</td><td>Chart rendering and theme colours</td></tr>
+      <tr><td class="mono">docs/options-atlas.md</td><td>Every option, with costs and the IT checklist</td></tr>
+      <tr><td class="mono">docs/options-diagrams.html</td><td>The eleven figures</td></tr>
+    </tbody>
+  </table>
+
+  <nav class="nav">
+    <a href="../lessons/0001-the-frame.html">← Lesson 01</a>
+    <span>Update this card as later lessons add parts.</span>
+  </nav>
+
+</main>
+</body>
+</html>

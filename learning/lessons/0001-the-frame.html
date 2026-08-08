@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 01 — Five parts and one request</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+<main class="wrap">
+
+  <p class="eyebrow">Lesson 01 · The frame</p>
+  <h1>Five parts and one request</h1>
+  <p class="lede">You cannot operate a system you cannot name. Before any choice in the
+  options atlas means anything, you need the skeleton those choices hang off — and the
+  path a single click takes through it.</p>
+
+  <div class="meta">
+    <span>~35 minutes</span>
+    <span>Assumes nothing about Azure or Dataverse</span>
+    <span>Pairs with figure 1 of the diagrams</span>
+    <span data-score></span>
+  </div>
+
+  <h2>Why this one first</h2>
+
+  <p>Your mission is to run this thing yourself: provision it, deploy it, and diagnose it
+  when a colleague says "the dashboard is blank." Every one of those tasks is really the
+  same task — <strong>knowing which part broke</strong>. That requires a frame with named
+  parts, which is what this lesson builds. Every later lesson changes exactly one part of
+  it.</p>
+
+  <aside class="side">Open <a href="../../docs/options-diagrams.html">the diagrams</a>
+  alongside this lesson. Figure 1 is this lesson in a single picture; you'll get more from
+  it after reading than before.</aside>
+
+  <h2>The five parts</h2>
+
+  <p>Here is the whole system. Notice how few pieces there are — the complexity in the
+  atlas comes from the <em class="term">choices</em> at each part, not from the number of
+  parts.</p>
+
+  <ul class="parts">
+    <li>
+      <span class="who">Microsoft runs it · your company's data</span>
+      <span class="name">Dataverse</span>
+      <span class="body">The database your business already keeps its rows in — but more
+      than a database: it also carries a security model (who may read which table, which
+      column) and a web API. It is the <em class="term">system of record</em>. Nothing
+      you build owns this data; you are a reader of it.</span>
+      <span class="gone">Without it: the dashboard has nothing to draw.</span>
+    </li>
+    <li>
+      <span class="who">You build it</span>
+      <span class="name">The container image</span>
+      <span class="body">A frozen, complete filesystem holding two things at once: the
+      compiled React files a browser will run, and the Node server that hands them over
+      and answers <code>/api</code> calls. One artifact, built once, run anywhere.</span>
+      <span class="gone">Without it: nothing to deploy — just source code on your laptop.</span>
+    </li>
+    <li>
+      <span class="who">Azure runs it · you own it</span>
+      <span class="name">Azure Container Registry (ACR)</span>
+      <span class="body">A private shelf that stores your image so Azure can fetch it.
+      Roughly $5/month at the Basic tier. Think of it as the warehouse between "built"
+      and "running".</span>
+      <span class="gone">Without it: the Web App has no image to pull.</span>
+    </li>
+    <li>
+      <span class="who">Azure runs it</span>
+      <span class="name">Azure Web App for Containers</span>
+      <span class="body">The managed machine that downloads your image and runs it,
+      handles HTTPS for you, and gives you a public URL. Its price is the
+      <em class="term">plan</em> underneath it — B1 is about $12.41/month. This is also
+      where the sign-in gate lives (next part).</span>
+      <span class="gone">Without it: the image sits in the registry, running nowhere.</span>
+    </li>
+    <li>
+      <span class="who">Microsoft runs it · your tenant</span>
+      <span class="name">Microsoft Entra ID</span>
+      <span class="body">Your organisation's identity system — the thing behind every
+      Microsoft 365 sign-in you already do. It issues proof-of-identity in
+      <strong>both</strong> directions here: it proves your colleagues are who they say
+      they are, and separately it proves your <em>app</em> is who it says it is.</span>
+      <span class="gone">Without it: no way to keep strangers out, and no way for the app
+      to convince Dataverse to answer.</span>
+    </li>
+  </ul>
+
+  <p><strong>Easy Auth is not a sixth part.</strong> It is a feature you switch on inside
+  the Web App: a sign-in gate that sits in front of your container, so unauthenticated
+  requests never reach your code at all.
+  (<a href="https://learn.microsoft.com/azure/app-service/overview-authentication-authorization">Authentication
+  and authorization in App Service</a>)</p>
+
+  <h2>The rule that shapes everything: one port</h2>
+
+  <p>Here is the single platform constraint that explains why your React app and your Node
+  server ship as <em>one</em> image rather than two. Microsoft's documentation states it
+  plainly:</p>
+
+  <div class="callout">
+    <h3>From the App Service docs</h3>
+    <p>"App Service currently allows your container to expose only one port for HTTP
+    requests."
+    (<a href="https://learn.microsoft.com/azure/app-service/configure-custom-container#configure-port-number">Configure
+    a custom container for App Service</a>)</p>
+  </div>
+
+  <p>One port means one thing answering the door. So the Node server answers everything:
+  it serves the React files <em>and</em> the <code>/api</code> routes, from the same
+  origin. A pleasant side effect — because the page and the API share an origin, there is
+  no CORS to configure, ever.</p>
+
+  <p>Open your <code>Dockerfile</code> and you can see this rule as architecture. Two
+  <code>FROM</code> lines: the first builds the React bundle, the second is a slim runtime
+  that copies that bundle in and starts Node. Two stages, one image.
+  (<a href="https://docs.docker.com/build/building/multi-stage/">Docker multi-stage builds</a>)</p>
+
+  <div class="callout limit">
+    <h3>A comment in your repo is wrong — and this is how you'd know</h3>
+    <p><code>server/index.js</code> says <code>// App Service sets WEBSITES_PORT→PORT for
+    containers</code>. The docs say otherwise: <code>WEBSITES_PORT</code> "isn't injected
+    into the container as an environment variable" — it only tells App Service which port
+    to <em>forward to</em>.
+    (<a href="https://learn.microsoft.com/azure/app-service/reference-app-settings#custom-containers">App
+    settings reference</a>)</p>
+    <p>The code still works, because it falls back to <code>8080</code> — which is exactly
+    the port <code>WEBSITES_PORT</code> will point at. Right behaviour, wrong reason. This
+    is the whole skill in miniature: <strong>read the primary source, not the comment</strong>.</p>
+  </div>
+
+  <h2>The word for the middle: BFF</h2>
+
+  <p>Your Node server is called a <em class="term">BFF</em> — backend for frontend. It is
+  a server whose only customer is your own web page. It exists here for three specific
+  reasons, and each is worth holding onto:</p>
+
+  <ol>
+    <li><strong>It holds the secret.</strong> Talking to Dataverse requires a credential.
+    Anything shipped to a browser is readable by anyone who opens dev tools, so the
+    credential can only live on a server.</li>
+    <li><strong>It collapses many viewers into one.</strong> All your viewers share a
+    single Dataverse request budget — 6,000 requests per 5 minutes.
+    (<a href="https://learn.microsoft.com/power-apps/developer/data-platform/api-limits">Service
+    protection API limits</a>) The BFF caches, so ten people looking at the same chart
+    cost one upstream call, not ten.</li>
+    <li><strong>It does the paging.</strong> Dataverse returns at most 5,000 rows per
+    page and hands back a link for the next one.
+    (<a href="https://learn.microsoft.com/power-apps/developer/data-platform/webapi/query/page-results">Page
+    results</a>) That loop belongs on a server, not in a browser.</li>
+  </ol>
+
+  <h2>Trace one request</h2>
+
+  <p>A colleague opens the dashboard URL and clicks a bar. Here is every hop. Read it
+  once, then do the ordering exercise below without looking.</p>
+
+  <ol class="trace">
+    <li><span class="hop">Browser → App Service front end</span>
+      <span class="detail">The URL resolves to Azure's front end, which terminates HTTPS
+      for you. Your container never handles certificates.</span></li>
+    <li><span class="hop">Easy Auth intercepts — before your code</span>
+      <span class="detail">No session? The viewer is redirected to Entra ID, signs in with
+      their work account, and comes back with a session cookie. Your container has still
+      not seen a single request.</span></li>
+    <li><span class="hop">App Service forwards to the one port</span>
+      <span class="detail">Now the request reaches your container, on the single port it
+      listens on. Easy Auth attaches headers describing who the viewer is.</span></li>
+    <li><span class="hop">Node serves the app shell</span>
+      <span class="detail">HTML and the JavaScript bundle go back. The page renders chart
+      frames with no data in them yet.</span></li>
+    <li><span class="hop">Browser calls <code>/api/...</code> — same origin</span>
+      <span class="detail">The React code asks its own server for data. Same host, so no
+      CORS. This request arrives at Node just like the last one.</span></li>
+    <li><span class="hop">BFF checks cache, then asks Entra for a token</span>
+      <span class="detail">On a cache miss the BFF presents the app's own credential to
+      Entra ID and receives a bearer token good for Dataverse.</span></li>
+    <li><span class="hop">BFF calls Dataverse; Dataverse checks the role</span>
+      <span class="detail">Dataverse looks at what that app identity is allowed to read,
+      returns rows, and the BFF shapes, caches, and returns JSON. ECharts draws.</span></li>
+  </ol>
+
+  <p><strong>Now notice what never happened.</strong> The browser never contacted
+  Dataverse. Not once, on any option in the atlas. That single fact is the reason the BFF
+  exists, and the reason the credential is safe.</p>
+
+  <h2>Two identities, endlessly confused</h2>
+
+  <p>Both come from Entra ID, which is exactly why people mix them up. Keep them apart and
+  most of the auth material becomes easy.</p>
+
+  <table>
+    <thead>
+      <tr><th></th><th>Viewer identity</th><th>App identity</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Belongs to</strong></td><td>A human colleague</td><td>The dashboard itself</td></tr>
+      <tr><td><strong>Proves</strong></td><td>You may open this site</td><td>This app may read these tables</td></tr>
+      <tr><td><strong>Checked by</strong></td><td>Easy Auth, at the gate</td><td>Dataverse, per query</td></tr>
+      <tr><td><strong>Travels as far as</strong></td><td>Your container — and stops</td><td>Dataverse</td></tr>
+      <tr><td><strong>Taught in</strong></td><td>Lesson 03</td><td>Lesson 02</td></tr>
+    </tbody>
+  </table>
+
+  <aside class="side">In this project everyone who gets through the gate sees the same
+  data — decided deliberately (ADR-0003). The alternative, where each viewer's own
+  identity reaches Dataverse, is drawn in figure 6.</aside>
+
+  <h2>Retrieval practice</h2>
+
+  <p>Answer from memory. Getting one wrong here is worth more than getting it right after
+  scrolling up — the effort is what makes it stick.</p>
+
+  <div class="quiz" data-why="One. That constraint is why the React build and the Node server ship in a single image with one process answering everything.">
+    <p class="q">How many ports may your container expose for HTTP on App Service?</p>
+    <ul class="opts">
+      <li><button data-correct>Exactly one port</button></li>
+      <li><button>Exactly two ports</button></li>
+      <li><button>Any exposed port</button></li>
+      <li><button>Eighty plus 8080</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="The BFF. A credential shipped to a browser is a published credential — anyone can open dev tools and read it.">
+    <p class="q">Which part holds the credential that Dataverse trusts?</p>
+    <ul class="opts">
+      <li><button>The React build</button></li>
+      <li><button data-correct>The Node BFF</button></li>
+      <li><button>The browser session</button></li>
+      <li><button>The container registry</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="Before. That is what makes it near-zero effort: unauthenticated requests are turned away by the platform and never reach code you wrote.">
+    <p class="q">Where does the Easy Auth gate sit relative to your container?</p>
+    <ul class="opts">
+      <li><button>Inside the container</button></li>
+      <li><button>Behind the container</button></li>
+      <li><button data-correct>Before the container</button></li>
+      <li><button>Beside the container</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="Never. On every option in the atlas the browser talks only to your own server, which is why one BFF can swap its data source without the frontend noticing.">
+    <p class="q">How often does the browser query Dataverse directly?</p>
+    <ul class="opts">
+      <li><button>Only when cached</button></li>
+      <li><button>Only for charts</button></li>
+      <li><button data-correct>It never does</button></li>
+      <li><button>Only after signin</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="Because all viewers share one Dataverse request budget of 6,000 per five minutes. Caching in the BFF turns ten viewers of one chart into one upstream call.">
+    <p class="q">Why does the BFF cache instead of just proxying?</p>
+    <ul class="opts">
+      <li><button>Browsers cache badly</button></li>
+      <li><button data-correct>Viewers share one budget</button></li>
+      <li><button>Dataverse forbids proxies</button></li>
+      <li><button>Azure charges per request</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="order" data-why="The shape to remember: the platform authenticates first, your server answers twice (once for the page, once for the data), and only the second of those reaches out to Entra and Dataverse.">
+    <p class="q">Click the seven hops in the order they happen.</p>
+    <ul class="opts">
+      <li><button data-pos="5">Browser calls <code>/api</code> on the same origin</button></li>
+      <li><button data-pos="1">Browser reaches the App Service front end</button></li>
+      <li><button data-pos="7">Dataverse checks the role and returns rows</button></li>
+      <li><button data-pos="3">App Service forwards to the container's one port</button></li>
+      <li><button data-pos="6">BFF misses cache and asks Entra for a token</button></li>
+      <li><button data-pos="2">Easy Auth sends the viewer to Entra to sign in</button></li>
+      <li><button data-pos="4">Node serves the HTML and JavaScript bundle</button></li>
+    </ul>
+    <p class="progress"></p>
+    <p class="why"></p>
+  </div>
+
+  <p class="score" data-score></p>
+
+  <h2>Do this now — 10 minutes in the real repo</h2>
+
+  <div class="task">
+    <h3>Find all five parts in your own code</h3>
+    <ol>
+      <li>Open <code>Dockerfile</code>. Find the two <code>FROM</code> lines. Which one
+      produces files the browser will run, and which one produces the thing that gets
+      deployed?</li>
+      <li>Open <code>server/index.js</code>. Find the line that chooses a port. Note the
+      fallback value — and now you know why it is that number.</li>
+      <li>In the same file, find the line that serves static files and the line that
+      mounts <code>/api</code>. That is the one-port rule expressed in eight words of
+      code.</li>
+      <li>Open <code>server/dataverse.js</code> and find <code>getToken()</code>. That
+      function is hop 6 of the trace. Everything about lesson 02 happens inside it.</li>
+      <li>Run <code>npm start</code> and open <code>http://localhost:8080</code>. The app
+      runs in mock mode — no Azure, no Dataverse, no credential. Find where the page tells
+      you it is mocked.</li>
+    </ol>
+    <p style="margin-top:.9rem;font-size:.9rem;">Then tell me one thing that surprised you.
+    That answer is how I pick lesson 02's starting point.</p>
+  </div>
+
+  <div class="source">
+    <h3>Read this before the next lesson</h3>
+    <p><a href="https://learn.microsoft.com/azure/app-service/configure-custom-container">Configure
+    a custom container for Azure App Service</a> — skim the whole page, read "Configure
+    port number" properly. It is short, it is the authority for the rule this lesson is
+    built on, and it is the page that will rescue your first deploy when the site returns
+    a blank page or a 502.</p>
+  </div>
+
+  <div class="ask">
+    <h3>I am your teacher here</h3>
+    <p>Ask me anything that did not land — "what actually <em>is</em> a tenant?", "why is
+    an image different from a virtual machine?", "show me hop 6 in the code". No question
+    is too basic; the vocabulary is genuinely the hard part at this stage, and asking is
+    faster than re-reading.</p>
+  </div>
+
+  <nav class="nav">
+    <a href="index.html">All lessons</a>
+    <a href="../reference/request-path.html">Reference card →</a>
+    <a href="0002-app-identity.html">Lesson 02 — how the app proves it may read →</a>
+  </nav>
+
+</main>
+</body>
+</html>

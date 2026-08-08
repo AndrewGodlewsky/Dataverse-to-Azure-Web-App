@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 05 — Getting the image there, and running</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+<main class="wrap">
+
+  <p class="eyebrow">Lesson 05 · Shipping</p>
+  <h1>Getting the image there, and running</h1>
+  <p class="lede">Two commands deploy this app. The second one exists because of a fact
+  that catches everyone exactly once: pushing a new image changes nothing at all.</p>
+
+  <div class="meta">
+    <span>~35 minutes</span>
+    <span>Needs lesson 04 completed</span>
+    <span>Pairs with figures 7 and 8</span>
+    <span data-score></span>
+  </div>
+
+  <div class="quiz" data-why="Assignee, role, scope — the app's identity, AcrPull, on the registry. The same shape you will use for every Azure permission you ever grant.">
+    <p class="q">Recall from lesson 04: a role assignment names which three things?</p>
+    <ul class="opts">
+      <li><button>Tenant, client, secret</button></li>
+      <li><button data-correct>Assignee, role, scope</button></li>
+      <li><button>Group, region, plan</button></li>
+      <li><button>Username, password, registry</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <h2>Build in the cloud, not on your laptop</h2>
+
+  <pre><code>az acr build --registry $ACR --image dashboard:latest .</code></pre>
+
+  <p>That single command uploads your source, builds the image <em>inside Azure</em>, and
+  pushes the result into the registry. The trailing <code>.</code> is the build context —
+  the directory whose contents get uploaded.
+  (<a href="https://learn.microsoft.com/azure/container-registry/container-registry-quickstart-task-cli">Build
+  and run with ACR Tasks</a>)</p>
+
+  <p>The consequence worth noticing: <strong>no Docker Desktop required</strong>. On a
+  locked-down corporate Windows machine that is not a convenience, it is the difference
+  between shipping and not. A five-minute build costs about three cents.</p>
+
+  <h3>What actually gets uploaded</h3>
+
+  <p>Everything in the context except what <code>.dockerignore</code> excludes. Open yours:
+  it drops <code>node_modules</code>, <code>.git</code>, <code>.env</code>,
+  <code>docs</code>, <code>plans</code>, <code>wayfinder</code> and all markdown. Sensible
+  — and worth checking after you add anything to the repo.</p>
+
+  <div class="callout">
+    <h3>Something you can see for yourself right now</h3>
+    <p><code>.dockerignore</code> was written before this teaching workspace existed, so
+    <code>learning/</code> is <em>not</em> excluded — every lesson file would be uploaded
+    on your next build. Harmless (they are not copied into the image) but pointless. Adding
+    one line fixes it, and noticing things like this is exactly the skill the mission is
+    after.</p>
+  </div>
+
+  <h2>The fact that catches everyone once</h2>
+
+  <p>You push a new image. You refresh the site. Nothing has changed. Nothing is broken
+  either — <strong>App Service pulls the image when the app starts</strong>, and your app
+  is already running, so it is still running the old one.</p>
+
+  <pre><code>az webapp restart --name $APP --resource-group $RG</code></pre>
+
+  <p>That is the whole of rung one from figure 8: build, then restart. The rungs above it
+  exist only to remove that second command — an ACR webhook can restart the app on push,
+  and GitHub Actions can do the whole chain from <code>git push</code>. Your project chose
+  to stay on rung one deliberately while the infrastructure is still moving.</p>
+
+  <aside class="side">Setting an app setting also restarts the app. So if you change
+  <code>CLIENT_SECRET</code> and the image at the same time, you get the new image as a
+  side effect — which can make it look like the webhook you never configured is working.</aside>
+
+  <h3>Tags, and why <code>:latest</code> is a choice</h3>
+
+  <table>
+    <thead><tr><th></th><th><code>:latest</code></th><th>Immutable tags</th></tr></thead>
+    <tbody>
+      <tr><td>Deploy step</td><td>Restart</td><td>Update config, then restart</td></tr>
+      <tr><td>Rollback</td><td>Rebuild the old code</td><td>Point at the old tag</td></tr>
+      <tr><td>"What is running?"</td><td>Unanswerable from config</td><td>Written in the config</td></tr>
+    </tbody>
+  </table>
+
+  <p><code>:latest</code> is right while you are iterating on infrastructure and wrong once
+  other people depend on the site. Switching later costs one flag on the build and one
+  <code>az webapp config container set</code>.</p>
+
+  <h2>When it does not come up</h2>
+
+  <p>The first deploy of any container fails for one of about four reasons, and you find
+  out which by reading the container's own logs:</p>
+
+  <pre><code>az webapp log config --name $APP --resource-group $RG --docker-container-logging filesystem
+az webapp log tail   --name $APP --resource-group $RG</code></pre>
+
+  <p>Leave the tail running and restart the app in another window. You will see the image
+  pull, then the container start, then your own <code>dashboard up on :8080</code> line.
+  Wherever it stops is your answer:</p>
+
+  <table>
+    <thead><tr><th>Log stops at</th><th>Cause</th></tr></thead>
+    <tbody>
+      <tr><td>Pulling the image</td><td>AcrPull missing, or <code>acrUseManagedIdentityCreds</code> not set</td></tr>
+      <tr><td>Container started, then site times out</td><td>Port mismatch — check <code>WEBSITES_PORT</code></td></tr>
+      <tr><td>Node crashes immediately</td><td>A missing app setting; read the stack trace</td></tr>
+      <tr><td>Site loads, <code>/api</code> returns 502</td><td>Not a deploy problem — that is lesson 06</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout limit">
+    <h3>The blank-page case specifically</h3>
+    <p>A container that starts happily but serves nothing is almost always the port. App
+    Service auto-detects 80 and 8080, and your image exposes 8080 — so this <em>should</em>
+    work even without <code>WEBSITES_PORT</code>. Set it anyway: the App Service FAQ says
+    to for custom containers, and one explicit setting removes a whole class of ambiguity
+    from your next outage.</p>
+  </div>
+
+  <h2>Retrieval practice</h2>
+
+  <div class="quiz" data-why="Nothing. App Service pulls on start, so a running app keeps running the image it already has until you restart it.">
+    <p class="q">You push a new image to the registry. What happens to the running site?</p>
+    <ul class="opts">
+      <li><button>It pulls within minutes</button></li>
+      <li><button data-correct>Nothing happens at all</button></li>
+      <li><button>It restarts and pulls</button></li>
+      <li><button>It fails until restarted</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="In Azure. That is the whole point of az acr build — no local Docker daemon, which matters on a locked-down corporate machine.">
+    <p class="q">Where does <code>az acr build</code> perform the build?</p>
+    <ul class="opts">
+      <li><button>On your local machine</button></li>
+      <li><button data-correct>Inside Azure itself</button></li>
+      <li><button>On the App Service</button></li>
+      <li><button>Within GitHub Actions</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="The build context minus .dockerignore. Which is why it is worth re-reading that file whenever the repo gains a new top-level directory.">
+    <p class="q">What gets uploaded when you run that build command?</p>
+    <ul class="opts">
+      <li><button>Only tracked git files</button></li>
+      <li><button>Only the Dockerfile itself</button></li>
+      <li><button data-correct>The context minus dockerignore</button></li>
+      <li><button>Only the built client</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="quiz" data-why="The container log stream. It shows the pull, the start, and your own startup line — and wherever it stops is the layer that failed.">
+    <p class="q">First thing to open when a deploy will not come up?</p>
+    <ul class="opts">
+      <li><button data-correct>The container log stream</button></li>
+      <li><button>The Dataverse audit log</button></li>
+      <li><button>The registry webhook history</button></li>
+      <li><button>The browser network tab</button></li>
+    </ul>
+    <p class="why"></p>
+  </div>
+
+  <div class="order" data-why="Build, push, restart, pull, run — and the restart is the only step a human has to remember on rung one. Automating exactly that step is what rung two buys.">
+    <p class="q">Click the deploy steps in order.</p>
+    <ul class="opts">
+      <li><button data-pos="3">You restart the web app</button></li>
+      <li><button data-pos="1">ACR builds the image from your context</button></li>
+      <li><button data-pos="5">The container starts and listens</button></li>
+      <li><button data-pos="2">The image lands in the registry</button></li>
+      <li><button data-pos="4">App Service pulls using its identity</button></li>
+    </ul>
+    <p class="progress"></p>
+    <p class="why"></p>
+  </div>
+
+  <p class="score" data-score></p>
+
+  <div class="task">
+    <h3>Do this now</h3>
+    <ol>
+      <li>Open <code>.dockerignore</code> and decide whether to add <code>learning</code>.
+      It is your repo and your call — but make it deliberately.</li>
+      <li>Open <code>README.md</code> and find the two deploy commands. They are the two in
+      this lesson. You now know why there are two.</li>
+      <li>Write your own deploy note: the exact two commands with your names filled in,
+      saved somewhere you will find them in three months.</li>
+      <li>If you have provisioned already: build, restart, and watch <code>log tail</code>
+      the whole way through. Seeing the pull-then-start sequence once is worth more than
+      reading about it.</li>
+    </ol>
+  </div>
+
+  <div class="source">
+    <h3>Read this</h3>
+    <p><a href="https://learn.microsoft.com/azure/app-service/configure-custom-container">Configure
+    a custom container for Azure App Service</a> — this time the "Access diagnostic logs"
+    section, which is the part you will actually use under pressure.</p>
+  </div>
+
+  <div class="ask">
+    <h3>Ask me</h3>
+    <p>Ask me to walk your first real deploy with you — the log stream is much easier to
+    read the second time. Also worth asking: "should I move to rung two?" The honest answer
+    depends on a tenant policy you can check in five minutes.</p>
+  </div>
+
+  <nav class="nav">
+    <a href="0004-provisioning.html">← Lesson 04</a>
+    <a href="../reference/request-path.html">Reference card</a>
+    <a href="0006-real-data.html">Lesson 06 — pointing it at real tables →</a>
+  </nav>
+
+</main>
+</body>
+</html>
