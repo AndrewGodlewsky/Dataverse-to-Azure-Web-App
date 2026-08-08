@@ -1,0 +1,3 @@
+#!/bin/sh
+# Hooks run with the working directory at the repo root.
+sh hooks/repo-memory-adr-check.sh
