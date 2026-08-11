@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontend &amp; charting · Architecture Atlas</title>
+<style>
+  :root {
+    --bg: #f6f8fa;
+    --surface: #ffffff;
+    --ink: #1d2833;
+    --ink-soft: #4e5d6c;
+    --line: #d9e1e8;
+    --accent: #0b5fad;
+    --accent-soft: #e5eff9;
+    --accent-line: #b5d0ea;
+    --chosen: #196c43;
+    --chosen-soft: #e4f2ea;
+    --chosen-line: #b9dcc8;
+    --warn: #935702;
+    --warn-soft: #f9efdc;
+    --warn-line: #e6cf9e;
+    --dead: #8a95a1;
+    --mono: Consolas, "Cascadia Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f151b; --surface: #161e26; --ink: #d9e2ea; --ink-soft: #92a3b3;
+      --line: #2b3843; --accent: #6fb1ea; --accent-soft: #14293e; --accent-line: #2c4c6b;
+      --chosen: #63c290; --chosen-soft: #132a1d; --chosen-line: #275c3e;
+      --warn: #dda54a; --warn-soft: #2d2413; --warn-line: #64511f;
+      --dead: #64707c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f151b; --surface: #161e26; --ink: #d9e2ea; --ink-soft: #92a3b3;
+    --line: #2b3843; --accent: #6fb1ea; --accent-soft: #14293e; --accent-line: #2c4c6b;
+    --chosen: #63c290; --chosen-soft: #132a1d; --chosen-line: #275c3e;
+    --warn: #dda54a; --warn-soft: #2d2413; --warn-line: #64511f;
+    --dead: #64707c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover, a:focus-visible { text-decoration: underline; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .topnav { border-bottom: 1px solid var(--line); background: var(--surface); }
+  .topnav .wrap { display: flex; flex-wrap: wrap; gap: 4px 22px; padding: 14px 24px; }
+  .topnav a { font: 600 12.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); padding: 4px 0; }
+  .topnav a[aria-current] { color: var(--accent); border-bottom: 2px solid var(--accent); }
+  header.page { padding: 44px 0 8px; }
+  .eyebrow { font: 600 12px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+  h1 { font-size: 34px; line-height: 1.2; letter-spacing: -.015em; margin: 0 0 12px; text-wrap: balance; }
+  .lede { font-size: 17.5px; color: var(--ink-soft); max-width: 62ch; margin: 0; }
+  h2 { font-size: 22px; letter-spacing: -.01em; margin: 52px 0 6px; text-wrap: balance; }
+  .h-sub { color: var(--ink-soft); margin: 0 0 20px; max-width: 68ch; }
+  main { padding-bottom: 24px; }
+  .pill { display: inline-block; font: 700 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 5px 8px; border-radius: 3px; white-space: nowrap; }
+  .pill-chosen { background: var(--chosen-soft); color: var(--chosen); border: 1px solid var(--chosen-line); }
+  .pill-warn { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn-line); }
+  .pill-alt { background: var(--bg); color: var(--ink-soft); border: 1px solid var(--line); }
+  .pill-dead { background: transparent; color: var(--dead); border: 1px dashed var(--dead); }
+
+  .verdict { border: 1px solid var(--chosen-line); background: var(--chosen-soft); padding: 18px 22px; margin: 24px 0; }
+  .verdict p { margin: 0; }
+  .verdict b:first-child { color: var(--chosen); font: 700 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 6px; }
+
+  .founding { border: 1px solid var(--accent-line); background: var(--accent-soft); padding: 16px 20px; margin: 20px 0; }
+  .founding p { margin: 0; font-size: 14.5px; }
+  .founding b:first-child { color: var(--accent); font: 700 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 6px; }
+
+  .scroll { overflow-x: auto; margin: 18px 0; border: 1px solid var(--line); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 640px; }
+  th { text-align: left; font: 700 11px var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-soft); border-bottom: 2px solid var(--line); padding: 10px 14px; }
+  td { border-bottom: 1px solid var(--line); padding: 10px 14px; vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-family: var(--mono); font-size: 13.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  tr.is-chosen td { background: var(--chosen-soft); }
+  code { font-family: var(--mono); font-size: .92em; background: var(--accent-soft); padding: 1px 5px; border-radius: 3px; }
+
+  .shapes { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 6px; }
+  .shape { font: 600 12.5px var(--mono); border: 1px solid var(--line); background: var(--surface); padding: 6px 12px; border-radius: 3px; }
+  .shape.hard { border-color: var(--warn-line); background: var(--warn-soft); color: var(--warn); }
+
+  .combo { border: 1px solid var(--line); background: var(--surface); padding: 18px 20px; margin: 14px 0; }
+  .combo-chosen { border-color: var(--chosen-line); background: var(--chosen-soft); }
+  .combo-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .combo-head h3 { margin: 0; font-size: 16.5px; }
+  .combo p { margin: 6px 0 0; font-size: 14.5px; }
+  .combo .con { color: var(--ink-soft); }
+
+  .reasons { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 20px 0; }
+  .reason { border: 1px solid var(--line); background: var(--surface); padding: 16px 18px; }
+  .reason b { display: block; font-size: 14.5px; margin-bottom: 6px; }
+  .reason p { margin: 0; font-size: 13.5px; color: var(--ink-soft); }
+
+  .callout { border: 1px solid var(--warn-line); background: var(--warn-soft); padding: 16px 20px; margin: 20px 0; }
+  .callout p { margin: 0; font-size: 14.5px; }
+  .callout b:first-child { color: var(--warn); font: 700 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 6px; }
+
+  footer { border-top: 1px solid var(--line); margin-top: 56px; }
+  footer .wrap { padding: 20px 24px 40px; font-size: 13.5px; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<nav class="topnav" aria-label="Atlas pages">
+  <div class="wrap">
+    <a href="index.html">Overview</a>
+    <a href="data-egress.html">Data egress</a>
+    <a href="identity.html">Identity</a>
+    <a href="hosting-cicd.html">Hosting &amp; CI/CD</a>
+    <a href="frontend.html" aria-current="page">Frontend</a>
+  </div>
+</nav>
+
+<header class="page wrap">
+  <p class="eyebrow">Layer · Frontend &amp; charting · ADR-0005</p>
+  <h1>The charting choice the whole project hangs on</h1>
+  <p class="lede">Custom cross-filtering is why this project exists as custom code at all — it's
+  the requirement that disqualified Power BI at framing time. So the chart library wasn't picked
+  on developer comfort; it was picked on which one carries that requirement natively.</p>
+</header>
+
+<main class="wrap">
+  <div class="founding">
+    <p><b>The founding requirement</b>
+    Click a category bar → the KPIs and the revenue line filter to match. That interaction —
+    bespoke cross-chart filtering — is outside Power BI's canned visual surface, which is why
+    Power BI appears nowhere else in the option atlas. It's already working in the built app.</p>
+  </div>
+
+  <div class="verdict">
+    <p><b>Decision — ADR-0005 (Accepted, medium confidence)</b>
+    Vite-built React SPA + Express BFF (same container, per ADR-0004) + <b>Apache ECharts</b> via
+    <code>echarts-for-react</code>, imported modularly (<code>echarts/core</code>).
+    Cross-filtering uses ECharts' native event/action machinery — <code>on()</code>,
+    <code>dispatchAction()</code>, <code>connect()</code> — rather than hand-rolled React state.
+    Accepted tradeoff: chart definitions live in ECharts option objects, the least React-ish API
+    of the field, and the largest bundle.</p>
+  </div>
+
+  <h2>The shapes that had to be served</h2>
+  <p class="h-sub">The requirement list that did the disqualifying. The amber ones are where most
+  libraries fell down:</p>
+  <div class="shapes">
+    <span class="shape">KPI tiles</span>
+    <span class="shape">bar</span>
+    <span class="shape">line / time-series</span>
+    <span class="shape">treemap</span>
+    <span class="shape">sunburst</span>
+    <span class="shape hard">tree / org-chart</span>
+    <span class="shape hard">cross-chart filtering</span>
+  </div>
+
+  <h2>The chart-library field</h2>
+  <p class="h-sub">Bundle sizes are min+gzip for the full package; all free except where noted.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Library</th><th>Bundle</th><th>Strengths</th><th>What disqualified it (or didn't)</th></tr></thead>
+      <tbody>
+        <tr class="is-chosen">
+          <td><b>Apache ECharts</b> <span class="pill pill-chosen">Chosen</span></td>
+          <td class="num">~368 kB → tree-shakable</td>
+          <td>The <em>only</em> library covering every project shape natively, including tree;
+          cross-filtering machinery built in; canvas rendering claims millions of points;
+          Apache-2.0</td>
+          <td>Nothing. Costs accepted: options-object API, biggest bundle (managed via
+          <code>echarts/core</code> modular imports), community-maintained React wrapper — worst
+          case is writing the ~100-line wrapper in-house</td>
+        </tr>
+        <tr>
+          <td><b>Recharts</b> <span class="pill pill-alt">Runner-up</span></td>
+          <td class="num">~148 kB</td>
+          <td>Lowest learning curve, plain JSX composition; v3 ships treemap, sunburst, sankey;
+          best KPI/bar/line developer experience</td>
+          <td><b>No tree series</b> — the org-chart shape is simply missing — and cross-filtering
+          is hand-rolled React state: friction landing exactly on the founding requirement</td>
+        </tr>
+        <tr>
+          <td><b>Chart.js</b> <span class="pill pill-alt">Not chosen</span></td>
+          <td class="num">~68 kB</td>
+          <td>Smallest and fast; decimation plugin for dense series</td>
+          <td>Hierarchies barely exist: third-party treemap plugin only, no sunburst, no tree, no
+          built-in cross-chart sync</td>
+        </tr>
+        <tr>
+          <td><b>visx</b> <span class="pill pill-warn">Too slow for the box</span></td>
+          <td class="num">modular</td>
+          <td>Highest custom-interaction ceiling — nothing prebuilt, so nothing impossible;
+          <code>@visx/hierarchy</code> has treemap and tree</td>
+          <td>A primitives kit, not a chart library: slowest path to first pixel, sunburst
+          hand-rolled, SVG under load — the riskiest fit for a one-week window</td>
+        </tr>
+        <tr>
+          <td><b>AG Charts Community</b> <span class="pill pill-dead">Disqualified</span></td>
+          <td class="num">~388 kB</td>
+          <td>Solid bar/line/area/pie basics; very active project</td>
+          <td>Treemap, sunburst, org chart, zoom, and chart synchronization are <b>all
+          Enterprise-only</b> ($499/dev) — the largest bundle for the fewest free types</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>The three stack combos</h2>
+
+  <div class="combo combo-chosen">
+    <div class="combo-head">
+      <h3>A · Vite + Express + ECharts — the interactivity-ceiling play</h3>
+      <span class="pill pill-chosen">Chosen</span>
+    </div>
+    <p>Every shape native, canvas headroom for drill-downs, cross-filtering in the box; Express
+    gives the cache/429 layer full freedom. Fits week-1 comfortably.</p>
+    <p class="con"><b>Cost:</b> the options-object API and bundle management. In the built app the
+    client bundle landed at ~776 kB pre-gzip / 260 kB gzipped — that's ECharts, fine for an
+    internal tool; <code>manualChunks</code> if it ever matters.</p>
+  </div>
+
+  <div class="combo">
+    <div class="combo-head">
+      <h3>B · Vite + Express + Recharts — the dev-speed play</h3>
+      <span class="pill pill-alt">Not chosen</span>
+    </div>
+    <p>Fastest of the three to build; lowest learning curve, JSX-composable.</p>
+    <p class="con"><b>Why it lost:</b> the tree-diagram gap means rendering org/BOM views as an
+    expandable list or pulling ECharts in for just that view (doubling the bundle on that page) —
+    and cross-filtering is manual state exactly where the project needs it strongest.</p>
+  </div>
+
+  <div class="combo">
+    <div class="combo-head">
+      <h3>C · Next.js standalone + visx (+ Chart.js) — the bespoke-UX play</h3>
+      <span class="pill pill-alt">Not chosen</span>
+    </div>
+    <p>No ceiling on novel linked visualizations; clean single-artifact Docker image via
+    <code>output: 'standalone'</code>.</p>
+    <p class="con"><b>Why it lost:</b> charts are client components anyway, so SSR buys nothing
+    here; server/client boundaries and build-time file tracing are new failure modes; and
+    visx-everything likely exceeds the week.</p>
+  </div>
+
+  <h2>Why the BFF is non-negotiable</h2>
+  <p class="h-sub">Tempting simplification: skip Express, let the React app call Dataverse
+  directly. Three independent reasons it can never work on the live branch:</p>
+
+  <div class="reasons">
+    <div class="reason">
+      <b>1 · The credential is confidential</b>
+      <p>The S2S credential is a confidential-client secret (later a managed-identity assertion).
+      It cannot ship in browser JavaScript, full stop.</p>
+    </div>
+    <div class="reason">
+      <b>2 · One throttle bucket for everyone</b>
+      <p>All viewers share the app user's single 6,000-req/5-min bucket. Only a server can
+      collapse N viewers into one cached upstream request and centrally honor
+      <code>Retry-After</code>.</p>
+    </div>
+    <div class="reason">
+      <b>3 · Paging shouldn't reach the browser</b>
+      <p>The Web API returns 5,000 rows/page with no <code>$skip</code> — the
+      <code>@odata.nextLink</code> loop belongs server-side, not in every client.</p>
+    </div>
+  </div>
+  <p class="h-sub">On a copy branch the same BFF simply points at the copy store instead — the
+  browser can't query Azure SQL or a data lake either. The BFF survives every fork in the atlas.</p>
+
+  <div class="callout">
+    <p><b>Build fact worth keeping</b>
+    Chart colors come from CSS custom properties in <code>client/src/styles.css</code> (light and
+    dark), read at render time via <code>getComputedStyle</code> in
+    <code>client/src/EChart.jsx</code>. Don't hardcode hex values in chart options — the palette
+    was validated in both themes.</p>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">Full detail:
+  <code>wayfinder/research/005-frontend-and-charting.md</code> ·
+  <code>docs/options-atlas.md</code> §3.5 ·
+  the record: <code>plans/architecture/2026/2026-08.md</code> ADR-0005. The working
+  implementation: <code>client/src/</code>.</div>
+</footer>
+</body>
+</html>

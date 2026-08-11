@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Identity — S2S credential &amp; viewer auth · Architecture Atlas</title>
+<style>
+  :root {
+    --bg: #f6f8fa;
+    --surface: #ffffff;
+    --ink: #1d2833;
+    --ink-soft: #4e5d6c;
+    --line: #d9e1e8;
+    --accent: #0b5fad;
+    --accent-soft: #e5eff9;
+    --accent-line: #b5d0ea;
+    --chosen: #196c43;
+    --chosen-soft: #e4f2ea;
+    --chosen-line: #b9dcc8;
+    --warn: #935702;
+    --warn-soft: #f9efdc;
+    --warn-line: #e6cf9e;
+    --dead: #8a95a1;
+    --mono: Consolas, "Cascadia Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f151b; --surface: #161e26; --ink: #d9e2ea; --ink-soft: #92a3b3;
+      --line: #2b3843; --accent: #6fb1ea; --accent-soft: #14293e; --accent-line: #2c4c6b;
+      --chosen: #63c290; --chosen-soft: #132a1d; --chosen-line: #275c3e;
+      --warn: #dda54a; --warn-soft: #2d2413; --warn-line: #64511f;
+      --dead: #64707c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f151b; --surface: #161e26; --ink: #d9e2ea; --ink-soft: #92a3b3;
+    --line: #2b3843; --accent: #6fb1ea; --accent-soft: #14293e; --accent-line: #2c4c6b;
+    --chosen: #63c290; --chosen-soft: #132a1d; --chosen-line: #275c3e;
+    --warn: #dda54a; --warn-soft: #2d2413; --warn-line: #64511f;
+    --dead: #64707c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover, a:focus-visible { text-decoration: underline; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .topnav { border-bottom: 1px solid var(--line); background: var(--surface); }
+  .topnav .wrap { display: flex; flex-wrap: wrap; gap: 4px 22px; padding: 14px 24px; }
+  .topnav a { font: 600 12.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); padding: 4px 0; }
+  .topnav a[aria-current] { color: var(--accent); border-bottom: 2px solid var(--accent); }
+  header.page { padding: 44px 0 8px; }
+  .eyebrow { font: 600 12px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+  h1 { font-size: 34px; line-height: 1.2; letter-spacing: -.015em; margin: 0 0 12px; text-wrap: balance; }
+  .lede { font-size: 17.5px; color: var(--ink-soft); max-width: 62ch; margin: 0; }
+  h2 { font-size: 22px; letter-spacing: -.01em; margin: 52px 0 6px; text-wrap: balance; }
+  .h-sub { color: var(--ink-soft); margin: 0 0 20px; max-width: 68ch; }
+  main { padding-bottom: 24px; }
+  .pill { display: inline-block; font: 700 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 5px 8px; border-radius: 3px; white-space: nowrap; }
+  .pill-chosen { background: var(--chosen-soft); color: var(--chosen); border: 1px solid var(--chosen-line); }
+  .pill-warn { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn-line); }
+  .pill-alt { background: var(--bg); color: var(--ink-soft); border: 1px solid var(--line); }
+  .pill-acc { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-line); }
+
+  .verdict { border: 1px solid var(--chosen-line); background: var(--chosen-soft); padding: 18px 22px; margin: 24px 0; }
+  .verdict p { margin: 0; }
+  .verdict b:first-child { color: var(--chosen); font: 700 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 6px; }
+
+  .foundation { border: 1px solid var(--accent-line); background: var(--accent-soft); padding: 16px 20px; margin: 20px 0; }
+  .foundation p { margin: 0; font-size: 14.5px; }
+  .foundation b:first-child { color: var(--accent); font: 700 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 6px; }
+
+  .var { border: 1px solid var(--line); background: var(--surface); padding: 20px 22px; margin: 16px 0; }
+  .var-chosen { border-color: var(--chosen-line); }
+  .var-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .var-head h3 { margin: 0; font-size: 17px; }
+  .var p { font-size: 14.5px; margin: 8px 0 0; }
+  .var .con { color: var(--ink-soft); }
+
+  ol.seq { list-style: none; counter-reset: step; margin: 14px 0 4px; padding: 0; border-left: 2px solid var(--accent-line); }
+  ol.seq li { counter-increment: step; position: relative; padding: 4px 0 4px 40px; font-size: 14px; margin: 6px 0; }
+  ol.seq li::before {
+    content: counter(step); position: absolute; left: -13px; top: 5px;
+    width: 24px; height: 24px; border-radius: 50%; background: var(--surface);
+    border: 2px solid var(--accent-line); color: var(--accent);
+    font: 700 12px/21px var(--mono); text-align: center;
+  }
+  ol.seq .who { font: 600 12px var(--mono); color: var(--accent); }
+
+  .scroll { overflow-x: auto; margin: 18px 0; border: 1px solid var(--line); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 620px; }
+  th { text-align: left; font: 700 11px var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-soft); border-bottom: 2px solid var(--line); padding: 10px 14px; }
+  td { border-bottom: 1px solid var(--line); padding: 10px 14px; vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.yes { color: var(--chosen); font-weight: 600; }
+  td.no { color: var(--ink-soft); }
+  code { font-family: var(--mono); font-size: .92em; background: var(--accent-soft); padding: 1px 5px; border-radius: 3px; }
+
+  .stagepath { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 20px 0; }
+  .stage { border: 1px solid var(--chosen-line); background: var(--surface); padding: 12px 16px; flex: 1; min-width: 240px; }
+  .stage b { display: block; font-size: 14.5px; }
+  .stage span { font-size: 13px; color: var(--ink-soft); }
+  .stage-now { background: var(--chosen-soft); }
+  .st-arrow { font: 700 15px var(--mono); color: var(--ink-soft); }
+
+  .callout { border: 1px solid var(--warn-line); background: var(--warn-soft); padding: 16px 20px; margin: 20px 0; }
+  .callout p { margin: 0; font-size: 14.5px; }
+  .callout b:first-child { color: var(--warn); font: 700 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 6px; }
+
+  footer { border-top: 1px solid var(--line); margin-top: 56px; }
+  footer .wrap { padding: 20px 24px 40px; font-size: 13.5px; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<nav class="topnav" aria-label="Atlas pages">
+  <div class="wrap">
+    <a href="index.html">Overview</a>
+    <a href="data-egress.html">Data egress</a>
+    <a href="identity.html" aria-current="page">Identity</a>
+    <a href="hosting-cicd.html">Hosting &amp; CI/CD</a>
+    <a href="frontend.html">Frontend</a>
+  </div>
+</nav>
+
+<header class="page wrap">
+  <p class="eyebrow">Layer · Identity · ADR-0002 &amp; ADR-0003</p>
+  <h1>Two auth problems, solved separately</h1>
+  <p class="lede">The server needs an identity to read Dataverse (server-to-server), and viewers
+  need to be gated at the front door (browser-to-app). They're independent decisions with
+  independent option fields — and both landed on the smallest thing that works.</p>
+</header>
+
+<main class="wrap">
+  <h2 id="s2s">Problem 1 — how the BFF authenticates to Dataverse</h2>
+
+  <div class="foundation">
+    <p><b>The shared foundation (identical in every variation)</b>
+    An unlicensed Dataverse <b>application user</b> carrying a custom read-only
+    <code>Dashboard Reader</code> security role, and the BFF requesting tokens for scope
+    <code>https://&lt;org&gt;.crm.dynamics.com/.default</code>. What varies is <em>which identity
+    object</em> the application user is bound to and <em>how the token is obtained</em>. Token
+    acquisition is isolated in one module (<code>getToken()</code> in
+    <code>server/dataverse.js</code>) — swapping variations is a config change plus ~10 lines,
+    never a rebuild.</p>
+  </div>
+
+  <div class="verdict">
+    <p><b>Decision — ADR-0002 (Accepted, high confidence)</b>
+    Stage it: start with <b>V1 (client secret)</b> for day-1 connectivity from a laptop, finish
+    with <b>V2 (federated identity credential)</b> once the Web App's user-assigned managed
+    identity exists, then delete the secret. The application user never changes, so the upgrade
+    is zero-rework. V3 was rejected because it forecloses per-user auth permanently.</p>
+  </div>
+
+  <div class="stagepath">
+    <div class="stage stage-now"><b>Stage 1 — now</b><span>App registration + client secret (12–24 mo expiry). Works before any Azure resource exists.</span></div>
+    <span class="st-arrow">→</span>
+    <div class="stage"><b>Stage 2 — after Azure provisioning</b><span>Add federated credential trusting the Web App's managed identity · swap the token module · delete the secret. Production ends secretless.</span></div>
+  </div>
+
+  <div class="callout">
+    <p><b>The one risk in the staged plan</b>
+    Stage 2 is a second IT interaction that must actually happen — the failure mode is stage 1
+    quietly becoming permanent, with a rotating secret living on as an ops burden. The handoff
+    doc schedules the upgrade as part of Azure provisioning specifically to prevent this.</p>
+  </div>
+
+  <div class="var var-chosen">
+    <div class="var-head">
+      <h3>V1 · Client secret</h3>
+      <span class="pill pill-chosen">Stage 1 — in use now</span>
+    </div>
+    <p>The documented mainstream S2S path: an app registration holds a secret; the BFF trades it
+    for tokens via <code>msal-node</code> client-credentials.</p>
+    <ol class="seq">
+      <li><span class="who">BFF → Entra</span> — sends <code>client_id</code> + <code>client_secret</code> (client-credentials grant); secret comes from an app setting or Key Vault reference</li>
+      <li><span class="who">Entra → BFF</span> — returns an access token carrying the app registration's identity</li>
+      <li><span class="who">BFF → Dataverse</span> — <code>GET /api/data/v9.2/…</code> with the bearer token; rows authorized through the application user's role</li>
+    </ol>
+    <p><b>Why it leads:</b> works before any Azure resource exists — first Dataverse query can run
+    day 1 from a laptop, and local dev is <em>identical</em> to prod.</p>
+    <p class="con"><b>Costs:</b> the secret expires (value shown once at creation), rotation is on
+    you, leakage is the risk Key Vault mitigates. All temporary by design.</p>
+  </div>
+
+  <div class="var var-chosen">
+    <div class="var-head">
+      <h3>V2 · Federated identity credential (FIC)</h3>
+      <span class="pill pill-chosen">Stage 2 — the end state</span>
+    </div>
+    <p>The app registration stays (governable, can hold future permissions) but <b>no secret
+    exists</b>: the registration <em>trusts</em> the Web App's user-assigned managed identity via a
+    federated credential with audience <code>api://AzureADTokenExchange</code>.</p>
+    <ol class="seq">
+      <li><span class="who">BFF → MI endpoint</span> — asks App Service for a managed-identity token (audience <code>api://AzureADTokenExchange</code>)</li>
+      <li><span class="who">BFF → Entra</span> — presents that MI token as a <em>client assertion</em> for the app registration</li>
+      <li><span class="who">Entra → BFF</span> — returns an access token carrying the app registration's identity (same identity as V1)</li>
+      <li><span class="who">BFF → Dataverse</span> — same bearer call as V1; the application user binding is untouched</li>
+    </ol>
+    <p><b>Why it's the end state:</b> nothing expires, nothing is stored, and the registration
+    survives — so per-user (on-behalf-of) auth stays possible later.</p>
+    <p class="con"><b>Costs:</b> can't exist until the managed identity does; local dev needs a
+    separate dev credential; FIC changes propagate in minutes — handle the transient
+    <code>AADSTS70021</code> with a retry.</p>
+  </div>
+
+  <div class="var">
+    <div class="var-head">
+      <h3>V3 · Managed identity direct</h3>
+      <span class="pill pill-alt">Rejected</span>
+    </div>
+    <p>No app registration at all — the managed identity's Application ID is entered directly as
+    the Dataverse application user. The shortest code of the three and the smallest possible IT
+    footprint (no Entra directory operation).</p>
+    <ol class="seq">
+      <li><span class="who">BFF → MI endpoint</span> — asks for a token scoped straight to <code>https://&lt;org&gt;.crm.dynamics.com/.default</code></li>
+      <li><span class="who">BFF → Dataverse</span> — bearer call; the application user <em>is</em> the managed identity</li>
+    </ol>
+    <p class="con"><b>Why it lost:</b> a laptop has no managed identity, so local dev needs a
+    <em>second identity with its own separate application user</em>, role-synced forever; and with
+    no app registration there's nowhere to hang delegated permissions — a dead end if per-user
+    auth ever returns. Different binding, so it's not upgradeable from V1 either.</p>
+  </div>
+
+  <h3 style="margin-top:36px">Side-by-side</h3>
+  <div class="scroll">
+    <table>
+      <thead><tr><th></th><th>V1 secret</th><th>V2 FIC</th><th>V3 MI direct</th></tr></thead>
+      <tbody>
+        <tr><td>Secrets in production</td><td>1 (rotating)</td><td class="yes">0</td><td class="yes">0</td></tr>
+        <tr><td>Works before Azure infra exists</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+        <tr><td>Local dev story</td><td class="yes">Same as prod</td><td class="no">Secondary credential</td><td class="no">Second identity + second app user</td></tr>
+        <tr><td>Rotation burden</td><td class="no">Every 12–24 mo</td><td class="yes">None</td><td class="yes">None</td></tr>
+        <tr><td>Future per-user (OBO) ready</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no"><b>No — forecloses it</b></td></tr>
+        <tr><td>IT directory ask</td><td>Registration + secret</td><td>Registration + FIC</td><td class="yes">None</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="viewer">Problem 2 — how viewers get in</h2>
+
+  <div class="verdict">
+    <p><b>Decision — ADR-0003 (Accepted, high confidence)</b>
+    App Service <b>Easy Auth</b> with the Entra provider gates the entire site; the auto-created
+    enterprise application is set to <b>Assignment required</b> and a dedicated viewer group is
+    assigned. Granting access = adding a person to the group. The app contains zero sign-in code;
+    identity arrives as unspoofable <code>X-MS-CLIENT-PRINCIPAL*</code> headers, read for
+    display/telemetry only. Everyone with access sees everything — user-confirmed, and it's what
+    keeps the BFF cache shared and effective.</p>
+  </div>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Option</th><th>Setup</th><th>Strengths</th><th>Why chosen / not</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Easy Auth + Assignment required + viewer group</b> <span class="pill pill-chosen">Chosen</span></td>
+          <td>Minutes</td>
+          <td>Zero auth code; platform gates before the container; membership managed in one Entra group</td>
+          <td>Fits the everyone-sees-everything model exactly; sign-in UX is Microsoft's — accepted</td>
+        </tr>
+        <tr>
+          <td>Easy Auth, any tenant user</td>
+          <td>Minutes</td>
+          <td>Simplest possible</td>
+          <td class="no">The whole tenant could open the dashboard — contradicts deliberate,
+          person-by-person access granting</td>
+        </tr>
+        <tr>
+          <td>In-app MSAL (+ optional per-user OBO)</td>
+          <td>Days</td>
+          <td>Full sign-in UX control; Dataverse's own row/column security per viewer; each viewer
+          gets their own throttle bucket</td>
+          <td class="no">Days of plumbing buying nothing under the no-restrictions model — and
+          viewer-specific responses would defeat the shared cache ADR-0001 depends on</td>
+        </tr>
+        <tr>
+          <td>No auth</td>
+          <td>—</td>
+          <td>—</td>
+          <td class="no">Dataverse-derived data on an open URL</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <p><b>A middle path kept in reserve</b>
+    If per-viewer data ever becomes a requirement: Easy Auth with the token store enabled already
+    hands the container the user's access token (<code>X-MS-TOKEN-AAD-ACCESS-TOKEN</code>). With
+    the delegated-permission chain set up, the BFF can run on-behalf-of flows from that header
+    with <b>no SPA-side MSAL at all</b>. That change would revisit ADR-0003 — likely alongside the
+    OBO door that ADR-0002's surviving app registration deliberately keeps open.</p>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">Full detail:
+  <code>docs/s2s-credential-variations.md</code> (all three variations with sequence diagrams) ·
+  <code>wayfinder/research/002-auth-and-identity.md</code> ·
+  the records: <code>plans/architecture/2026/2026-08.md</code> ADR-0002, ADR-0003. The
+  copy-pasteable IT request package is <code>docs/options-atlas.md</code> §6.1.</div>
+</footer>
+</body>
+</html>

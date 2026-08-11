@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data egress — live vs copy · Architecture Atlas</title>
+<style>
+  :root {
+    --bg: #f6f8fa;
+    --surface: #ffffff;
+    --ink: #1d2833;
+    --ink-soft: #4e5d6c;
+    --line: #d9e1e8;
+    --accent: #0b5fad;
+    --accent-soft: #e5eff9;
+    --accent-line: #b5d0ea;
+    --chosen: #196c43;
+    --chosen-soft: #e4f2ea;
+    --chosen-line: #b9dcc8;
+    --warn: #935702;
+    --warn-soft: #f9efdc;
+    --warn-line: #e6cf9e;
+    --dead: #8a95a1;
+    --mono: Consolas, "Cascadia Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f151b; --surface: #161e26; --ink: #d9e2ea; --ink-soft: #92a3b3;
+      --line: #2b3843; --accent: #6fb1ea; --accent-soft: #14293e; --accent-line: #2c4c6b;
+      --chosen: #63c290; --chosen-soft: #132a1d; --chosen-line: #275c3e;
+      --warn: #dda54a; --warn-soft: #2d2413; --warn-line: #64511f;
+      --dead: #64707c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f151b; --surface: #161e26; --ink: #d9e2ea; --ink-soft: #92a3b3;
+    --line: #2b3843; --accent: #6fb1ea; --accent-soft: #14293e; --accent-line: #2c4c6b;
+    --chosen: #63c290; --chosen-soft: #132a1d; --chosen-line: #275c3e;
+    --warn: #dda54a; --warn-soft: #2d2413; --warn-line: #64511f;
+    --dead: #64707c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover, a:focus-visible { text-decoration: underline; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .topnav { border-bottom: 1px solid var(--line); background: var(--surface); }
+  .topnav .wrap { display: flex; flex-wrap: wrap; gap: 4px 22px; padding: 14px 24px; }
+  .topnav a { font: 600 12.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); padding: 4px 0; }
+  .topnav a[aria-current] { color: var(--accent); border-bottom: 2px solid var(--accent); }
+  header.page { padding: 44px 0 8px; }
+  .eyebrow { font: 600 12px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+  h1 { font-size: 34px; line-height: 1.2; letter-spacing: -.015em; margin: 0 0 12px; text-wrap: balance; }
+  .lede { font-size: 17.5px; color: var(--ink-soft); max-width: 62ch; margin: 0; }
+  h2 { font-size: 22px; letter-spacing: -.01em; margin: 52px 0 6px; text-wrap: balance; }
+  .h-sub { color: var(--ink-soft); margin: 0 0 20px; max-width: 68ch; }
+  main { padding-bottom: 24px; }
+  .pill { display: inline-block; font: 700 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 5px 8px; border-radius: 3px; white-space: nowrap; }
+  .pill-chosen { background: var(--chosen-soft); color: var(--chosen); border: 1px solid var(--chosen-line); }
+  .pill-warn { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn-line); }
+  .pill-alt { background: var(--bg); color: var(--ink-soft); border: 1px solid var(--line); }
+  .pill-acc { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-line); }
+  .pill-dead { background: transparent; color: var(--dead); border: 1px dashed var(--dead); }
+
+  .verdict { border: 1px solid var(--chosen-line); background: var(--chosen-soft); padding: 18px 22px; margin: 24px 0; }
+  .verdict p { margin: 0; }
+  .verdict b:first-child { color: var(--chosen); font: 700 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 6px; }
+
+  .ceilings { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 20px 0; }
+  .ceiling { border: 1px solid var(--warn-line); background: var(--surface); padding: 16px 20px; }
+  .ceiling .big { font: 700 26px/1.2 var(--mono); color: var(--warn); font-variant-numeric: tabular-nums; }
+  .ceiling p { margin: 6px 0 0; font-size: 14px; color: var(--ink-soft); }
+
+  .opt { border: 1px solid var(--line); background: var(--surface); padding: 18px 20px; margin: 14px 0; }
+  .opt-chosen { border-color: var(--chosen-line); background: var(--chosen-soft); }
+  .opt-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .opt-head h3 { margin: 0; font-size: 16.5px; }
+  .opt-meta { font: 600 12.5px var(--mono); color: var(--ink-soft); white-space: nowrap; }
+  .opt p { margin: 6px 0 0; font-size: 14.5px; }
+  .opt .con { color: var(--ink-soft); }
+
+  .scroll { overflow-x: auto; margin: 18px 0; border: 1px solid var(--line); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 620px; }
+  th { text-align: left; font: 700 11px var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-soft); border-bottom: 2px solid var(--line); padding: 10px 14px; }
+  td { border-bottom: 1px solid var(--line); padding: 10px 14px; vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-family: var(--mono); font-size: 13.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  code { font-family: var(--mono); font-size: .92em; background: var(--accent-soft); padding: 1px 5px; border-radius: 3px; }
+
+  .deadlist { border: 1px dashed var(--dead); padding: 16px 20px; margin: 18px 0; }
+  .deadlist h3 { margin: 0 0 8px; color: var(--dead); font: 700 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+  .deadlist ul { margin: 0; padding-left: 20px; color: var(--ink-soft); font-size: 14px; }
+  .deadlist li { margin: 4px 0; }
+  .deadlist s { color: var(--dead); }
+
+  footer { border-top: 1px solid var(--line); margin-top: 56px; }
+  footer .wrap { padding: 20px 24px 40px; font-size: 13.5px; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<nav class="topnav" aria-label="Atlas pages">
+  <div class="wrap">
+    <a href="index.html">Overview</a>
+    <a href="data-egress.html" aria-current="page">Data egress</a>
+    <a href="identity.html">Identity</a>
+    <a href="hosting-cicd.html">Hosting &amp; CI/CD</a>
+    <a href="frontend.html">Frontend</a>
+  </div>
+</nav>
+
+<header class="page wrap">
+  <p class="eyebrow">Layer · Data egress · ADR-0001</p>
+  <h1>Live vs copy — every way out of Dataverse</h1>
+  <p class="lede">The single biggest fork in the whole architecture: query Dataverse live on every
+  request, or maintain an exported copy and query that. Seven viable paths were surveyed; the
+  choice turns on two hard platform ceilings, not on feature preference.</p>
+</header>
+
+<main class="wrap">
+  <div class="verdict">
+    <p><b>Decision — ADR-0001 (Accepted, medium confidence)</b>
+    The Node BFF reads Dataverse <em>live</em> through the Web API (OData/FetchXML) using the S2S
+    application user. No copy store is built. Grounds: no dashboard chart needs a ≥50k-row
+    aggregate now or plausibly soon, all viewers may see all data, and live costs $0 with
+    &lt;1&nbsp;day of setup. The BFF's TTL cache and central <code>Retry-After</code> handling are
+    load-bearing consequences of this choice, not optimizations.</p>
+  </div>
+
+  <h2>The two ceilings that decide everything</h2>
+  <p class="h-sub">These are Dataverse platform limits the team does not control. Every path below
+  is really a position relative to these two numbers — exceeding them isn't a cost, it's an outage.</p>
+
+  <div class="ceilings">
+    <div class="ceiling">
+      <span class="big">50,000 rows</span>
+      <p>The aggregate cap. Any single aggregate query touching ≥50k rows <b>hard-errors</b> — it
+      doesn't slow down, it fails. Global KPIs over large tables are the classic trigger.</p>
+    </div>
+    <div class="ceiling">
+      <span class="big">6,000 req / 5 min</span>
+      <p>The service-protection throttle — plus 20&nbsp;min compute and 52 concurrent calls per
+      window — measured <b>per user</b>. The BFF's single application user is <em>one bucket shared
+      by every viewer</em>, which is why caching must live in the BFF.</p>
+    </div>
+  </div>
+
+  <h2>The seven paths</h2>
+  <p class="h-sub">Two live, five copy. Setup time and monthly cost are the headline numbers;
+  the limits column is what disqualifies a path for a given workload.</p>
+
+  <div class="opt opt-chosen">
+    <div class="opt-head">
+      <h3>1 · Dataverse Web API (OData v4) — live</h3>
+      <span class="pill pill-chosen">Chosen</span>
+    </div>
+    <p class="opt-meta">&lt; 1 day setup · $0/month</p>
+    <p>Real-time data, smallest setup of any path, Dataverse security applies per query, and
+    FetchXML brings hierarchy operators (<code>Under</code>/<code>Above</code>) nothing else has.</p>
+    <p class="con"><b>Limits:</b> 5,000 rows/page with no <code>$skip</code> (paging is
+    <code>@odata.nextLink</code> loops), the 50k aggregate cap, and the shared throttle bucket.
+    All three are handled centrally in the BFF.</p>
+  </div>
+
+  <div class="opt">
+    <div class="opt-head">
+      <h3>2 · TDS / SQL endpoint — live</h3>
+      <span class="pill pill-acc">Kept — for humans only</span>
+    </div>
+    <p class="opt-meta">&lt; 1 day setup · $0/month</p>
+    <p>Real T-SQL SELECT/JOIN/GROUP BY over live data from any SQL client; on by default.</p>
+    <p class="con"><b>Limits:</b> read-only subset — no CTEs, PIVOT, or OVER; 5-minute query
+    timeout; no elastic tables, no file/image columns; and the <em>same</em> throttles and
+    aggregate cap as the Web API. The app doesn't use it; it stays available for ad-hoc human SQL
+    exploration.</p>
+  </div>
+
+  <div class="opt">
+    <div class="opt-head">
+      <h3>3 · Synapse Link — CSV + serverless SQL — copy</h3>
+      <span class="pill pill-warn">The tripwire path</span>
+    </div>
+    <p class="opt-meta">1–2 days setup · ~$1–20/month (ADLS ~$0.02/GB-mo + $5/TB scanned)</p>
+    <p>Push-based, near-real-time (15–45&nbsp;min typical), no aggregate caps, reads never touch
+    Dataverse throttles, full T-SQL. This is the pre-selected escape hatch: if the tripwire fires,
+    this gets added <em>additively</em> and recorded as a superseding ADR.</p>
+    <p class="con"><b>Limits:</b> needs ADLS Gen2 + change tracking per table; append-only mode
+    forces dedupe logic (<code>VersionNumber</code>, <code>isDeleted=0</code>) into every consumer;
+    Dataverse security roles do <em>not</em> flow to the lake — storage RBAC becomes the boundary;
+    creation needs a Dataverse System Administrator.</p>
+  </div>
+
+  <div class="opt">
+    <div class="opt-head">
+      <h3>4 · Synapse Link — Delta Lake + Spark — copy</h3>
+      <span class="pill pill-alt">Not chosen</span>
+    </div>
+    <p class="opt-meta">2–4 days setup · tens to low hundreds $/month (Spark vCore-hours)</p>
+    <p>Compressed Parquet (⅓–⅛ the size), faster queries, chooseable sync interval, no dedupe
+    burden (Delta handles it).</p>
+    <p class="con"><b>Limits:</b> Spark pool provisioning and tuning time; the cost floor rises as
+    the sync interval shortens; same change-tracking and RBAC caveats as #3. The setup time alone
+    crowds a one-week build.</p>
+  </div>
+
+  <div class="opt">
+    <div class="opt-head">
+      <h3>5 · Fabric Link — copy</h3>
+      <span class="pill pill-alt">Not chosen — flagged expensive</span>
+    </div>
+    <p class="opt-meta">Hours if capacity exists · ~$263+/month (F2 24×7) + Dataverse storage draw</p>
+    <p>Genuinely zero-ETL: a wizard auto-creates Lakehouse + SQL endpoint + semantic model; no
+    storage account to run; the full Fabric surface afterwards.</p>
+    <p class="con"><b>Limits:</b> the highest fixed cost floor in the atlas, billed whether or not
+    anyone queries; the replica consumes Dataverse storage capacity; and the link identity needs
+    Dataverse <b>System Administrator</b> — a materially bigger IT grant that needs its own
+    approval conversation (IT package item F, deliberately never submitted).</p>
+  </div>
+
+  <div class="opt">
+    <div class="opt-head">
+      <h3>6 · Power Platform dataflows — copy</h3>
+      <span class="pill pill-alt">Not chosen</span>
+    </div>
+    <p class="opt-meta">Hours setup · $0 Azure incremental (license-covered)</p>
+    <p>Low-code Power Query authoring; no Azure resources for Dataverse-destination flows.</p>
+    <p class="con"><b>Limits:</b> it's an ETL surface, not a query endpoint — external code can't
+    reach internal storage (BYO-ADLS needed); ≤48 refreshes/day, ~500 rows/s; source reads count
+    against the same live API limits; author needs a Power Apps/BI license.</p>
+  </div>
+
+  <div class="opt">
+    <div class="opt-head">
+      <h3>7 · Azure Data Factory (Dataverse connector) — copy</h3>
+      <span class="pill pill-alt">Not chosen</span>
+    </div>
+    <p class="opt-meta">~1 day setup (+ watermark logic) · $5–50/month + sink cost</p>
+    <p>Copy to <em>any</em> sink — an ADF-fed Azure SQL DB would give the app a fully-owned
+    transactional + analytical store.</p>
+    <p class="con"><b>Limits:</b> you own schema drift, deletes, and incremental watermarks;
+    extraction consumes the same throttled Dataverse API and competes with live users during runs;
+    freshness is whatever the trigger cadence is.</p>
+  </div>
+
+  <div class="deadlist">
+    <h3>Dead paths — do not build on these</h3>
+    <ul>
+      <li><s>Data Export Service</s> (→ Azure SQL) — end-of-life <b>Nov 2022</b></li>
+      <li><s>Export to Data Lake</s> (F&amp;O add-in) — decommissioning began <b>Mar 2025</b></li>
+      <li><s>OData v2 Organization Data Service</s> — removed; the platform returns <code>OrganizationDataServiceDeprecatedError</code></li>
+      <li><s>2011 SOAP endpoint</s> — deprecated, no Node story at all</li>
+      <li><s>BYOD</s> (F&amp;O) — no EOL date, but Microsoft steers to Synapse/Fabric Link</li>
+      <li><s>Synapse Link "in-place update" CSV mode</s> — documented as legacy; use append-only or Delta</li>
+    </ul>
+    <p style="margin:8px 0 0; font-size:13.5px; color:var(--ink-soft)">All still appear in stale
+    blog posts. If a tutorial mentions one, close the tab.</p>
+  </div>
+
+  <h2>When would the answer change? The rubric</h2>
+  <p class="h-sub">The research scored nine criteria against four synthetic table configurations
+  (A–D). Match a real schema to the nearest configuration to see which criteria trip. This
+  project's data resembles configuration A — which is why live-only won.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Config</th><th>Shape</th><th>Verdict</th><th>The criterion that decides it</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="num"><b>A</b></td>
+          <td>Reference mesh, &lt;2k rows</td>
+          <td><span class="pill pill-chosen">Branch-indifferent</span></td>
+          <td>Nothing trips. Live wins only on cost ($0) and setup (&lt;1 day). <b>This is the floor
+          case — and this project.</b></td>
+        </tr>
+        <tr>
+          <td class="num"><b>B</b></td>
+          <td>Transactional core, 1.2M OrderLine</td>
+          <td><span class="pill pill-warn">Hybrid</span></td>
+          <td>Global KPIs ("revenue by month, all time") hard-error on the 50k cap → copy those;
+          column security + filtered per-account views keep point reads live.</td>
+        </tr>
+        <tr>
+          <td class="num"><b>C</b></td>
+          <td>Event stream, 8M rows/yr, elastic table</td>
+          <td><span class="pill pill-warn">Copy-only for analytics</span></td>
+          <td>160× over the aggregate cap; elastic tables never appear in TDS; ingest velocity
+          swamps the shared bucket.</td>
+        </tr>
+        <tr>
+          <td class="num"><b>D</b></td>
+          <td>Hierarchy &amp; documents, 400k BomLine</td>
+          <td><span class="pill pill-warn">Hybrid — forced both ways</span></td>
+          <td>Hierarchy <code>Under</code>/<code>Above</code> operators exist <em>only</em> live
+          (FetchXML); recursion (BOM explosion) exists <em>only</em> in a copy; files never export
+          through Synapse Link, so documents are live-only regardless.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>The hybrid pattern — a first-class outcome, not a compromise</h2>
+  <p class="h-sub">Worth knowing even though it wasn't needed: if the tripwire ever fires, this is
+  the shape the architecture grows into, and the single BFF is what makes it cheap.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Workload</th><th>Store</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Point lookups, filtered lists under the caps, hierarchy traversals, anything under column security</td>
+            <td class="num">Live (Web API)</td><td>Caps don't trip; security enforced per query; hierarchy operators only exist here</td></tr>
+        <tr><td>Global KPIs, trends, any group-by that can touch ≥50k rows</td>
+            <td class="num">Copy (Synapse SQL)</td><td>No caps, no throttle contact</td></tr>
+        <tr><td>Files and images</td>
+            <td class="num">Live — always</td><td>They don't export through Synapse Link at all</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="h-sub">The frontend never knows which store answered — both sit behind the same
+  <code>/api</code>. The incremental cost over copy-only is near zero because the live leg's S2S
+  setup is needed for file fetches anyway.</p>
+</main>
+
+<footer>
+  <div class="wrap">Full detail with primary-source citations:
+  <code>wayfinder/research/001-data-egress-options.md</code> ·
+  <code>docs/options-atlas.md</code> §3.1, §4 · the record itself:
+  <code>plans/architecture/2026/2026-08.md</code> ADR-0001.</div>
+</footer>
+</body>
+</html>

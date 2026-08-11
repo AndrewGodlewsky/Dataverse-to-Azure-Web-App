@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture Atlas — Dataverse → Azure Web App</title>
+<style>
+  :root {
+    --bg: #f6f8fa;
+    --surface: #ffffff;
+    --ink: #1d2833;
+    --ink-soft: #4e5d6c;
+    --line: #d9e1e8;
+    --accent: #0b5fad;
+    --accent-soft: #e5eff9;
+    --accent-line: #b5d0ea;
+    --chosen: #196c43;
+    --chosen-soft: #e4f2ea;
+    --chosen-line: #b9dcc8;
+    --warn: #935702;
+    --warn-soft: #f9efdc;
+    --warn-line: #e6cf9e;
+    --dead: #8a95a1;
+    --mono: Consolas, "Cascadia Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f151b; --surface: #161e26; --ink: #d9e2ea; --ink-soft: #92a3b3;
+      --line: #2b3843; --accent: #6fb1ea; --accent-soft: #14293e; --accent-line: #2c4c6b;
+      --chosen: #63c290; --chosen-soft: #132a1d; --chosen-line: #275c3e;
+      --warn: #dda54a; --warn-soft: #2d2413; --warn-line: #64511f;
+      --dead: #64707c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f151b; --surface: #161e26; --ink: #d9e2ea; --ink-soft: #92a3b3;
+    --line: #2b3843; --accent: #6fb1ea; --accent-soft: #14293e; --accent-line: #2c4c6b;
+    --chosen: #63c290; --chosen-soft: #132a1d; --chosen-line: #275c3e;
+    --warn: #dda54a; --warn-soft: #2d2413; --warn-line: #64511f;
+    --dead: #64707c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover, a:focus-visible { text-decoration: underline; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .topnav { border-bottom: 1px solid var(--line); background: var(--surface); }
+  .topnav .wrap { display: flex; flex-wrap: wrap; gap: 4px 22px; padding: 14px 24px; }
+  .topnav a { font: 600 12.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); padding: 4px 0; }
+  .topnav a[aria-current] { color: var(--accent); border-bottom: 2px solid var(--accent); }
+
+  header.page { padding: 44px 0 8px; }
+  .eyebrow { font: 600 12px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+  h1 { font-size: 34px; line-height: 1.2; letter-spacing: -.015em; margin: 0 0 12px; text-wrap: balance; }
+  .lede { font-size: 17.5px; color: var(--ink-soft); max-width: 62ch; margin: 0; }
+  h2 { font-size: 22px; letter-spacing: -.01em; margin: 52px 0 6px; text-wrap: balance; }
+  h3 { font-size: 16.5px; margin: 28px 0 8px; }
+  .h-sub { color: var(--ink-soft); margin: 0 0 20px; max-width: 68ch; }
+  main { padding-bottom: 24px; }
+
+  .pill { display: inline-block; font: 700 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 5px 8px; border-radius: 3px; white-space: nowrap; }
+  .pill-chosen { background: var(--chosen-soft); color: var(--chosen); border: 1px solid var(--chosen-line); }
+  .pill-warn { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn-line); }
+  .pill-alt { background: var(--bg); color: var(--ink-soft); border: 1px solid var(--line); }
+  .pill-acc { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-line); }
+
+  /* architecture flow diagram */
+  .diagram { border: 1px solid var(--line); background: var(--surface); padding: 22px; margin: 20px 0; overflow-x: auto; }
+  .flow-row { display: flex; align-items: stretch; gap: 0; min-width: 640px; }
+  .flow-row + .flow-row { margin-top: 14px; }
+  .node { border: 1px solid var(--line); background: var(--bg); padding: 10px 14px; flex: 1; }
+  .node b { display: block; font-size: 14px; }
+  .node span { font-size: 12.5px; color: var(--ink-soft); }
+  .node-acc { border-color: var(--accent-line); background: var(--accent-soft); }
+  .node-dead { border-style: dashed; color: var(--dead); background: transparent; }
+  .node-dead b, .node-dead span { color: var(--dead); }
+  .fl-arrow { align-self: center; padding: 0 10px; font: 600 12px var(--mono); color: var(--ink-soft); white-space: nowrap; text-align: center; }
+  .stack { display: flex; flex-direction: column; gap: 8px; flex: 1.4; border: 1px solid var(--accent-line); padding: 10px; background: var(--surface); }
+  .stack > .cap { font: 600 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+
+  /* decision cards */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin: 20px 0; }
+  .card { border: 1px solid var(--line); background: var(--surface); padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; }
+  .card .num { font: 600 11.5px var(--mono); letter-spacing: .06em; color: var(--ink-soft); display: flex; justify-content: space-between; align-items: center; }
+  .card h3 { margin: 0; font-size: 16px; line-height: 1.35; }
+  .card p { margin: 0; font-size: 14px; color: var(--ink-soft); }
+  .card .why { color: var(--ink); }
+  .card .foot { margin-top: auto; padding-top: 10px; font-size: 13.5px; }
+
+  .callout { border: 1px solid var(--warn-line); background: var(--warn-soft); padding: 16px 20px; margin: 20px 0; }
+  .callout p { margin: 0; }
+  .callout b:first-child { color: var(--warn); font: 700 11.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 6px; }
+
+  .scroll { overflow-x: auto; margin: 18px 0; border: 1px solid var(--line); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 560px; }
+  th { text-align: left; font: 700 11px var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-soft); border-bottom: 2px solid var(--line); padding: 10px 14px; }
+  td { border-bottom: 1px solid var(--line); padding: 10px 14px; vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.num, .cost { font-family: var(--mono); font-size: 13.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  tr.is-chosen td { background: var(--chosen-soft); }
+
+  .pagegrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 20px 0; }
+  .pagelink { border: 1px solid var(--line); background: var(--surface); padding: 16px 18px; display: block; color: var(--ink); }
+  .pagelink:hover { border-color: var(--accent-line); text-decoration: none; }
+  .pagelink .k { font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 6px; }
+  .pagelink b { display: block; font-size: 15px; margin-bottom: 4px; }
+  .pagelink span { font-size: 13.5px; color: var(--ink-soft); }
+
+  footer { border-top: 1px solid var(--line); margin-top: 56px; }
+  footer .wrap { padding: 20px 24px 40px; font-size: 13.5px; color: var(--ink-soft); }
+  code { font-family: var(--mono); font-size: .92em; background: var(--accent-soft); padding: 1px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<nav class="topnav" aria-label="Atlas pages">
+  <div class="wrap">
+    <a href="index.html" aria-current="page">Overview</a>
+    <a href="data-egress.html">Data egress</a>
+    <a href="identity.html">Identity</a>
+    <a href="hosting-cicd.html">Hosting &amp; CI/CD</a>
+    <a href="frontend.html">Frontend</a>
+  </div>
+</nav>
+
+<header class="page wrap">
+  <p class="eyebrow">Architecture atlas · 7 ADRs · researched &amp; ratified 2026-08</p>
+  <h1>Dataverse → Azure Web App dashboard</h1>
+  <p class="lede">An internal dashboard with custom cross-filtering — the founding requirement that ruled
+  out Power BI — reading Dataverse live, shipped as one container image to Azure Web App for
+  Containers. This page is the map: every structural decision, what it beat, and where the escape
+  hatches are. The four layer pages hold the full option fields.</p>
+</header>
+
+<main class="wrap">
+  <h2>The shape that was chosen</h2>
+  <p class="h-sub">One image, one port, one store. Solid boxes exist (or will, once Azure is
+  provisioned); the dashed box is deliberately <em>not built</em> — it only appears if the
+  tripwire fires.</p>
+
+  <div class="diagram" role="img" aria-label="Architecture flow: browser through Easy Auth to a single container holding the React build and Node BFF, which reads Dataverse live; ACR delivers the image via managed-identity pull; a copy store is not built.">
+    <div class="flow-row">
+      <div class="node"><b>Browser</b><span>internal tenant users, person-by-person access</span></div>
+      <div class="fl-arrow">HTTPS →</div>
+      <div class="node node-acc"><b>Easy Auth gate</b><span>Entra sign-in · assignment required · viewer group — zero auth code in the app</span></div>
+      <div class="fl-arrow">→</div>
+      <div class="stack">
+        <span class="cap">One container · Web App for Containers (B1 Linux)</span>
+        <div class="node"><b>React static build</b><span>Vite + Apache ECharts, cross-filtering native</span></div>
+        <div class="node"><b>Node BFF (Express)</b><span>/api routes · TTL cache · 429/Retry-After handling — load-bearing, not optional</span></div>
+      </div>
+    </div>
+    <div class="flow-row">
+      <div class="node node-acc"><b>Azure Container Registry</b><span>Basic tier · image pulled by managed identity holding AcrPull — no stored credentials</span></div>
+      <div class="fl-arrow">← az acr build<br>(manual, by choice)</div>
+      <div class="node"><b>Dataverse</b><span>read live via Web API (OData/FetchXML), S2S application user, no copy kept</span></div>
+      <div class="fl-arrow">·</div>
+      <div class="node node-dead"><b>Copy store</b><span>Synapse Link — not built; added only if the tripwire fires</span></div>
+    </div>
+  </div>
+
+  <h2>The five structural decisions</h2>
+  <p class="h-sub">Each card is one accepted ADR: what was picked, the strongest alternative it beat,
+  and the tradeoff knowingly accepted. Full option fields live on the linked layer pages.</p>
+
+  <div class="cards">
+    <div class="card">
+      <div class="num">ADR-0001 · Data access <span class="pill pill-chosen">Accepted · Med conf</span></div>
+      <h3>Read Dataverse live via the Web API — no copy store</h3>
+      <p class="why">$0/month, &lt;1 day setup, always-current data. No chart needs a ≥50k-row
+      aggregate and all viewers see all data, which removed every argument for a copy.</p>
+      <p><b>Beat:</b> Synapse Link copy (staleness + plumbing for a problem the data doesn't have),
+      hybrid (two query paths, unjustified yet).</p>
+      <p class="foot"><b>Tradeoff:</b> hard platform ceilings — 50k aggregate cap, one shared
+      throttle bucket. <a href="data-egress.html">All seven egress paths →</a></p>
+    </div>
+
+    <div class="card">
+      <div class="num">ADR-0002 · Auth &amp; identity <span class="pill pill-chosen">Accepted · High conf</span></div>
+      <h3>Stage the server credential: client secret now, federated identity later</h3>
+      <p class="why">A secret gives day-1 laptop connectivity before any Azure exists; the same app
+      registration later trusts the Web App's managed identity and the secret is deleted. Zero
+      rework — the swap is config plus ~10 lines in one module.</p>
+      <p><b>Beat:</b> FIC-from-day-1 (blocks first query on Azure infra), managed identity direct
+      (forecloses per-user auth forever).</p>
+      <p class="foot"><b>Tradeoff:</b> a rotating secret exists during stage 1.
+      <a href="identity.html">All three variations →</a></p>
+    </div>
+
+    <div class="card">
+      <div class="num">ADR-0003 · Auth &amp; identity <span class="pill pill-chosen">Accepted · High conf</span></div>
+      <h3>Gate viewers with Easy Auth + an assigned Entra group</h3>
+      <p class="why">The platform gates the site before requests reach the container. Granting
+      access = adding someone to one group. No sign-in code anywhere in the app, and responses
+      stay cacheable because they're never viewer-specific.</p>
+      <p><b>Beat:</b> any-tenant-user (contradicts deliberate access), in-app MSAL/OBO (days of
+      plumbing buying nothing under the everyone-sees-everything model).</p>
+      <p class="foot"><b>Tradeoff:</b> all authorization stops at the front door — by design.
+      <a href="identity.html#viewer">Viewer options →</a></p>
+    </div>
+
+    <div class="card">
+      <div class="num">ADR-0004 · Hosting <span class="pill pill-chosen">Accepted · High conf</span></div>
+      <h3>One multi-stage image, ACR, managed-identity pull</h3>
+      <p class="why">App Service custom containers expose exactly one HTTP port, so one image
+      (Vite build stage → slim Node runtime serving <code>/api</code> + static) is the natural
+      shape: one deploy unit, one TLS endpoint, no CORS, no registry credentials anywhere.</p>
+      <p><b>Beat:</b> separate nginx + Node images (CORS + two apps for an internal tool),
+      ACR admin-account auth (the documented anti-pattern).</p>
+      <p class="foot"><b>Tradeoff:</b> frontend and BFF version together.
+      <a href="hosting-cicd.html">Tiers, pull auth, CI/CD ladder →</a></p>
+    </div>
+
+    <div class="card">
+      <div class="num">ADR-0005 · Frontend <span class="pill pill-chosen">Accepted · Med conf</span></div>
+      <h3>Vite + Express + Apache ECharts</h3>
+      <p class="why">ECharts is the only library with every needed shape native — including
+      tree/org-chart — and cross-filtering machinery built in (<code>on</code>,
+      <code>dispatchAction</code>, <code>connect</code>). The founding requirement lands on
+      library strength, not hand-rolled state.</p>
+      <p><b>Beat:</b> Recharts (no tree series; cross-filtering hand-rolled exactly on the founding
+      requirement), Next.js + visx (SSR buys nothing; week-1 risk), AG Charts (needed shapes
+      paywalled).</p>
+      <p class="foot"><b>Tradeoff:</b> options-object API, largest bundle (managed via modular
+      imports). <a href="frontend.html">The full field →</a></p>
+    </div>
+
+    <div class="card">
+      <div class="num">ADR-0006 / 0007 · Process <span class="pill pill-acc">Accepted</span></div>
+      <h3>How decisions and plans are recorded</h3>
+      <p class="why"><b>0006:</b> hard-to-reverse decisions live as append-only ADRs in
+      <code>plans/architecture/</code> — never edited, only superseded, so the history of changed
+      direction survives.</p>
+      <p class="why"><b>0007:</b> large efforts are charted as wayfinder maps on GitHub Issues
+      (map + sub-issues + native dependencies); bulky research stays in-repo under
+      <code>wayfinder/research/</code>. The first map (issue #8) is closed — new efforts chart new maps.</p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <p><b>The one tripwire to remember</b>
+    If any chart ever needs an aggregate touching <span class="cost">≥ 50,000 rows</span>, or
+    sustained HTTP 429 throttling appears, add Azure Synapse Link <em>additively</em> — the BFF
+    grows a second read path, nothing is rebuilt — and record it as a superseding ADR. Until then,
+    the copy-store branch stays deliberately unbuilt.</p>
+  </div>
+
+  <h2>What each option costs</h2>
+  <p class="h-sub">Monthly list prices, East US. Every variant includes the container base
+  (ACR Basic $5 + App Service plan) and effectively-$0 CI/CD.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Variant</th><th>Egress</th><th>Container base</th><th>Total / month</th><th></th></tr></thead>
+      <tbody>
+        <tr class="is-chosen">
+          <td><b>Live-minimal</b> — Web API + B1 plan</td>
+          <td class="num">$0</td><td class="num">$17.41</td><td class="num"><b>≈ $17</b></td>
+          <td><span class="pill pill-chosen">Current pick</span></td>
+        </tr>
+        <tr>
+          <td><b>Live-production</b> — Web API + P0v3 plan</td>
+          <td class="num">$0</td><td class="num">$61.58</td><td class="num">≈ $62</td>
+          <td><span class="pill pill-alt">In-place upgrade</span></td>
+        </tr>
+        <tr>
+          <td><b>Copy — Synapse</b> (CSV + serverless SQL)</td>
+          <td class="num">$1–20</td><td class="num">$17–62</td><td class="num">≈ $20–80</td>
+          <td><span class="pill pill-warn">Tripwire path</span></td>
+        </tr>
+        <tr>
+          <td><b>Hybrid</b> — live filtered reads + Synapse aggregates</td>
+          <td class="num">$1–20</td><td class="num">$17–62</td><td class="num">≈ $20–80</td>
+          <td><span class="pill pill-warn">Tripwire path</span></td>
+        </tr>
+        <tr>
+          <td><b>Copy — Fabric</b> (F2 capacity, 24×7)</td>
+          <td class="num">$263+</td><td class="num">$17–62</td><td class="num">≈ $280–330+</td>
+          <td><span class="pill pill-alt">Not chosen</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Deliberately <em>not</em> decided</h2>
+  <p class="h-sub">These are reversible operational settings, kept out of the ADRs on purpose —
+  changing them later needs no record, no rework:</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Setting</th><th>Current</th><th>Upgrade path</th></tr></thead>
+      <tbody>
+        <tr><td>App Service plan tier</td><td class="num">B1 ($12.41)</td><td>In-place scale to P0v3 ($56.58) for slots + 4&nbsp;GB — no ADR needed</td></tr>
+        <tr><td>CI/CD rung</td><td>Manual (<code>az acr build</code> + restart)</td><td>ACR webhook auto-deploy (~1&nbsp;h), then GitHub Actions OIDC (~½&nbsp;day) — rungs are additive</td></tr>
+        <tr><td>Image tag strategy</td><td>Undecided until first deploy</td><td><code>:latest</code> + webhook = auto-redeploy · immutable tags = auditable releases</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Dig into a layer</h2>
+  <div class="pagegrid">
+    <a class="pagelink" href="data-egress.html"><span class="k">Layer · Data egress</span><b>Live vs copy</b><span>Seven ways out of Dataverse, the two hard ceilings, the rubric, six dead paths</span></a>
+    <a class="pagelink" href="identity.html"><span class="k">Layer · Identity</span><b>Two auth problems</b><span>Server→Dataverse credential (3 variations) and browser→app viewer gating</span></a>
+    <a class="pagelink" href="hosting-cicd.html"><span class="k">Layer · Hosting</span><b>Container, registry, deploy</b><span>Image shape, ACR &amp; plan tiers, pull auth, the CI/CD effort ladder</span></a>
+    <a class="pagelink" href="frontend.html"><span class="k">Layer · Frontend</span><b>Charts &amp; stack</b><span>Five chart libraries, three stack combos, why the BFF is non-negotiable</span></a>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">Sources in-repo: <code>plans/architecture/DECISIONS.md</code> (ADR index) ·
+  <code>docs/options-atlas.md</code> (full survey + IT package) ·
+  <code>docs/s2s-credential-variations.md</code> · <code>wayfinder/research/001–006</code>
+  (primary-source citations). Generated 2026-08-09 from those files — they win on any conflict.</div>
+</footer>
+</body>
+</html>
